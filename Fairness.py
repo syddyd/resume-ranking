@@ -1,11 +1,12 @@
 import os
+import numpy as np
 import tensorflow as tf
 import tensorflow_ranking as tfr
-import numpy as np 
 import pandas as pd
 
-print("You have imported things ill tell you that")
-fairCV = np.load("./data/FairCVdb.npy", allow_pickle = True).item()
+
+
+fairCV = np.load("FairCVdb.npy", allow_pickle = True).item()
 ds = fairCV['Profiles Train']
 dy = fairCV['Biased Labels Train (Gender)']
 print(ds.shape)
@@ -20,39 +21,6 @@ ds_test = np.delete(ds_test, np.s_[12:51], axis=1)
 ds_test = np.reshape(ds_test, (-1, 1, ds_test.shape[1]))
 dy_test = fairCV['Blind Labels Test']
 
-for i in range(0,5):
-  print(f"{ds[i]} label: {dy[i]}")
-
-# Create a model
-inputs = {
-    "float_features": tf.keras.Input(shape=(None, 12), dtype='float32')
-}
-norm_inputs = [tf.keras.layers.BatchNormalization()(x) for x in inputs.values()]
-x = tf.concat(norm_inputs, axis=-1)
-for layer_width in [128, 64, 32]:
-  x = tf.keras.layers.Dense(units=layer_width)(x)
-  x = tf.keras.layers.Activation(activation=tf.nn.relu)(x)
-scores = tf.squeeze(tf.keras.layers.Dense(units=1)(x), axis=-1)
-
-# Compile and train
-model = tf.keras.Model(inputs=inputs, outputs=scores)
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
-    loss=tfr.keras.losses.MeanSquaredLoss(),
-    metrics=tfr.keras.metrics.get("ndcg", topn=5, name="NDCG@5"))
-model.fit(ds, dy, epochs=3)
-
-yhat = model.predict(ds_test)
-acc = 0 
-all = 0
-for i in range(len(yhat)): 
-  if abs(yhat[i] - dy_test[i]) < 0.002 : 
-    acc +=1
-  all +=1
-
-print(f"accuracy: {100*(acc/all)}%")
-
-''' fairness models'''
 # Inputs: shape [batch_size, 1, 12] after reshaping
 inputs = tf.keras.Input(shape=(1, 12), name="float_features")
 
@@ -124,7 +92,7 @@ class FairnessAwareRankingLoss(tf.keras.losses.Loss):
         preds_flat = tf.reshape(y_pred, [-1])
         group_ids_flat = tf.reshape(group_ids, [-1])
 
-        # counts
+        # Compute counts
         prob_positive_counts = tf.zeros((self.num_groups,), dtype=tf.float32)
         total_counts = tf.zeros((self.num_groups,), dtype=tf.float32)
 
@@ -151,7 +119,7 @@ fair_loss = FairnessAwareRankingLoss(
 model.compile(optimizer='adam', loss=fair_loss)
 
 model.fit(
-    x=train_features,        # input tensor
+    x=train_features,        # Your input dict or tensor
     y=train_labels,          # Ranking labels
     sample_weight=group_ids, # Group IDs per example
     batch_size=32,
@@ -169,8 +137,8 @@ clf.fit(aif_data)
     ranking_loss = ranking_loss_fn(y_true, y_pred)
     df_penalty = differential_fairness_penalty(y_pred, group_ids)
     return ranking_loss + λ_df * df_penalty
-
-
+'''
+''' 
 training loops 
 def compute_group_counts(preds, group_ids, threshold=0.0, num_groups=8):
     """
@@ -204,9 +172,59 @@ with tf.GradientTape() as tape:
 # Predict
 preds = clf.predict(aif_data)
 
+# Evaluate subgroup accuracy
+from aif360.metrics import ClassificationMetric
+
+metric = ClassificationMetric(
+    aif_data,
+    preds,
+    unprivileged_groups=unprivileged_groups,
+    privileged_groups=privileged_groups
+)
+#   Subgroup metrics
+heatmap
+clf.heatmapflag = True
+clf.heatmap_path = 'heatmap'
+clf.generate_heatmap(aif_data, dataset.labels)
+Image(filename='{}.png'.format(clf.heatmap_path))
+
+blackbox auditing
+gerry_metric = BinaryLabelDatasetMetric(aif_data)
+gamma_disparity = gerry_metric.rich_subgroup(array_to_tuple(dataset.labels),'FP')
+print(gamma_disparity)
+#FPR VS FNR data analysis
+def fp_vs_fn(dataset, gamma_list, iters):
+    fp_auditor = Auditor(dataset, 'FP')
+    fn_auditor = Auditor(dataset, 'FN')
+    fp_violations = []
+    fn_violations = []
+    for g in gamma_list:
+        print('gamma: {} '.format(g), end =" ")
+        fair_model = GerryFairClassifier(C=100, printflag=False, gamma=g, max_iters=iters)
+        fair_model.gamma=g
+        fair_model.fit(dataset)
+        predictions = array_to_tuple((fair_model.predict(dataset)).labels)
+        _, fp_diff = fp_auditor.audit(predictions)
+        _, fn_diff = fn_auditor.audit(predictions)
+        fp_violations.append(fp_diff)
+        fn_violations.append(fn_diff)
+
+    plt.plot(fp_violations, fn_violations, label='adult')
+    plt.xlabel('False Positive Disparity')
+    plt.ylabel('False Negative Disparity')
+    plt.legend()
+    plt.title('FP vs FN Unfairness')
+    plt.savefig('gerryfair_fp_fn.png')
+    plt.close()
+
+gamma_list = [0.001, 0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.02, 0.03, 0.05]
+fp_vs_fn(data_set, gamma_list, pareto_iters)
+Image(filename='gerryfair_fp_fn.png')
+
 print("Subgroup accuracy:", metric.accuracy())
 print("Disparate Impact:", metric.disparate_impact())
 print("Equal opportunity difference:", metric.equal_opportunity_difference())
 # Access subgroup statistics
 clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
+
 '''
