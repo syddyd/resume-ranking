@@ -3,4 +3,18 @@ gotta install tensorflow with
 !pip install -q tensorflow-ranking; 
 !pip install typing-extensions==4.13.1;
 
-then go to https://github.com/BiDAlab/FairCVtest and download FairCVdb.py and put it in this directory 
+!!Disclaimer i had to use a virtual environment for tensorflow as i have too advanced a version on my puter!!
+
+preprocessing - some
+in processing training loops - roughly done
+  CNN + DNN Model -> DF penalty
+  GerryFair Classifier
+calibration - TBD
+post processing - TBD
+  MultiAccuracyBoost    
+evaluation metrics - some
+
+
+to consider 
+- subgroup fairness in groups of one
+- 
