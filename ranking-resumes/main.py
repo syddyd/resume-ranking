@@ -40,17 +40,20 @@ features = ds.squeeze()  # shape: (n_samples, n_features)
 labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
 df = pd.DataFrame(features)
 df['label'] = labels
-df['race'] = fairCV[:0]  # supply actual values
-df['gender'] = fairCV[:1]  # supply actual values
+df['ethnicity'] = ds[:,0].astype(int) # supply actual values
+# Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
+ethnicity_map = {0: 0, 1: 1, 3: 2}
+ethnicity_norm = np.vectorize(ethnicity_map.get)(df)  # now values in [0, 1, 2]
+df['gender'] =  ds[:,1].astype(int)# supply actual values
 
 # Define privileged/unprivileged groups
-privileged_groups = [{'race': 1, 'gender': 1}]  # e.g., white male
-unprivileged_groups = [{'race': 0, 'gender': 0}]  # e.g., non-white female
+privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
+unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
 
 aif_data = BinaryLabelDataset(
     df=df,
     label_names=['label'],
-    protected_attribute_names=['race', 'gender']
+    protected_attribute_names=['ethnicity', 'gender']
 )
 
 
@@ -86,23 +89,27 @@ for i in range(len(yhat)):
 
 print(f"accuracy: {100*(acc/all)}%")
 
+
+print("PREPROCESSING DONE")
+
 ''' fairness models'''
 # Inputs: shape [batch_size, 1, 12] after reshaping
-inputs = tf.keras.Input(shape=(1, 12), name="float_features")
+inputs = tf.keras.Input(shape=(1, 12), name="tabular_features")
 
 # --- CNN Block ---
 # Simulate convolution over the "feature channels"
 x = tf.keras.layers.Conv1D(filters=32, kernel_size=1, activation='relu')(inputs)
 x = tf.keras.layers.Conv1D(filters=64, kernel_size=1, activation='relu')(x)
-x = tf.keras.layers.Flatten()(x)
+x = tf.keras.layers.GlobalAveragePooling1D()(x)
+x = tf.keras.layers.Dense(1)(x)
+'''Optional 
+x = tf.keras.layers.Conv1D(32, 1, activation='relu')(inputs)
+x = tf.keras.layers.Conv1D(64, 1, activation='relu')(x)
+x = tf.keras.layers.Dropout(0.3)(x) -> if we want regularization 
+x = tf.keras.layers.GlobalAveragePooling1D()(x)
+x = tf.keras.layers.Dense(1)(x)
 
-# --- DNN Head ---
-x = tf.keras.layers.Dense(128, activation='relu')(x)
-x = tf.keras.layers.Dropout(0.3)(x)
-x = tf.keras.layers.Dense(64, activation='relu')(x)
-x = tf.keras.layers.Dense(1)(x)  # Output ranking score
-
-
+'''
 # Final model
 model = tf.keras.Model(inputs=inputs, outputs=x)
 
@@ -113,7 +120,11 @@ ranking_model = tfr.keras.model.create_keras_model(
     metrics=[tfr.keras.metrics.get(tfr.keras.metrics.RankingMetricKey.NDCG)],
 )
 
+
 #MAKE SURE!!!! group_ids is a flat vector!!!!!
+'''3!= 6 intersectional groups'''
+num_ethnicities = 3  # G1, G2, G3 (after mapping)
+group_ids = df['gender'] * num_ethnicities + ethnicity_norm
 group_ids_train = fairCV['Group IDs Train'] 
 group_ids_test = fairCV['Group IDs Test']
 
@@ -200,6 +211,7 @@ model.fit(
     batch_size=32,
     epochs=10,
     validation_data=(val_features, val_labels, val_group_ids)
+    callbacks=[CalibrationPlotCallback(val_inputs, val_labels, group_ids=val_group_ids)]
 )
 
 
@@ -208,7 +220,14 @@ from aif360.algorithms.inprocessing import GerryFairClassifier
 clf = GerryFairClassifier(C=100, gamma=0.005, fairness_def='FP', printflag=False)
 clf.fit(aif_data)
 
+
+
 #Calibration Error
+from sklearn.calibration import calibration_curve
+import matplotlib.pyplot as plt
+
+
+
 
 def compute_ece(y_true, y_probs, n_bins=10):
     """Compute Expected Calibration Error (ECE)"""
@@ -231,17 +250,6 @@ y_pred_raw = model(x)  # your TF model predictions (logits or scores)
 y_pred_probs = expit(y_pred_raw)  # convert scores to probabilities
 ece = compute_ece(y_true, y_pred_probs)
 print("Calibration Error (ECE) - TF Ranking:", ece)
-
-
-
-def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
-    group_ece = {}
-    unique_groups = np.unique(group_ids)
-    for g in unique_groups:
-        mask = group_ids == g
-        ece_g = compute_ece(y_true[mask], y_probs[mask], n_bins)
-        group_ece[g] = ece_g
-    return group_ece
 
 
 
@@ -270,7 +278,7 @@ def compute_group_counts(preds, group_ids, threshold=0.0, num_groups=8):
     return prob_positive_counts, total_counts
 
 
-   # IN TRAINING 
+# IN TRAINING 
 with tf.GradientTape() as tape:
     preds = model(batch_x, training=True)
     ranking_loss = ranking_loss_fn(batch_y, preds)
@@ -304,15 +312,80 @@ Calibration Post Training
 group_calibration = subgroup_ece(np.array(y), np.array(preds), np.array(group_ids))
 for g, e in group_calibration.items():
     print(f"Group {g} ECE: {e:.4f}")
+
 import matplotlib.pyplot as plt
 from sklearn.calibration import calibration_curve
 
-def plot_calibration(y_true, y_probs, n_bins=10, label='Model'):
-    prob_true, prob_pred = calibration_curve(y_true, y_probs, n_bins=n_bins)
-    plt.plot(prob_pred, prob_true, marker='o', label=label)
-    plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
-    plt.xlabel('Predicted probability')
-    plt.ylabel('Empirical probability')
-    plt.title('Calibration Curve')
-    plt.legend()
-    plt.show()
+class CalibrationPlotCallback(tf.keras.callbacks.Callback):
+    def __init__(self, x_val, y_val, group_ids=None, n_bins=10):
+        super().__init__()
+        self.x_val = x_val
+        self.y_val = y_val
+        self.group_ids = group_ids
+        self.n_bins = n_bins
+
+    def on_epoch_end(self, epoch, logs=None):
+        y_pred = self.model.predict(self.x_val).flatten()
+        y_true = self.y_val.flatten()
+
+        # Apply sigmoid if needed
+        from scipy.special import expit
+        y_prob = expit(y_pred)
+
+        self.plot_calibration(y_true, y_prob, epoch)
+
+        if self.group_ids is not None:
+            self.plot_subgroup_ece(y_true, y_prob, self.group_ids)
+
+    def plot_calibration(self, y_true, y_prob, epoch):
+        prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=self.n_bins)
+        plt.figure()
+        plt.plot(prob_pred, prob_true, marker='o', label='Model')
+        plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+        plt.title(f'Calibration Curve - Epoch {epoch+1}')
+        plt.xlabel('Predicted Probability')
+        plt.ylabel('Empirical Probability')
+        plt.legend()
+        plt.grid()
+        plt.savefig(f'calibration_epoch_{epoch+1}.png')
+        plt.close()
+
+    def plot_subgroup_ece(self, y_true, y_prob, group_ids):
+        from collections import defaultdict
+        import numpy as np
+
+        group_ids = np.array(group_ids)
+        eces = defaultdict(float)
+
+        for g in np.unique(group_ids):
+            mask = group_ids == g
+            if np.sum(mask) < 10:
+                continue
+            ece = compute_ece(y_true[mask], y_prob[mask])
+            print(f"Epoch Subgroup {g} ECE: {ece:.4f}")
+
+
+def evaluate_calibration(y_true, y_probs, group_ids=None, label="Model"):
+    ece = compute_ece(y_true, y_probs)
+    print(f"{label} Calibration Error (ECE): {ece:.4f}")
+    
+    if group_ids is not None:
+        group_ece = subgroup_ece(y_true, y_probs, group_ids)
+        for g, e in group_ece.items():
+            print(f"{label} Group {g} ECE: {e:.4f}")
+    
+    plot_calibration(y_true, y_probs, label=label)
+
+
+def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
+    group_ece = {}
+    unique_groups = np.unique(group_ids)
+    for g in unique_groups:
+        mask = group_ids == g
+        ece_g = compute_ece(y_true[mask], y_probs[mask], n_bins)
+        group_ece[g] = ece_g
+    return group_ece
+
+
+evaluate_calibration(test_labels, y_pred_probs, test_group_ids, label="TF-Ranking")
+evaluate_calibration(np.array(y), np.array(gerry_probs), np.array(group_ids_test), label="GerryFair")
