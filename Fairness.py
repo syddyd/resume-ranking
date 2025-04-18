@@ -5,7 +5,6 @@ import tensorflow_ranking as tfr
 import pandas as pd
 
 
-
 fairCV = np.load("FairCVdb.npy", allow_pickle = True).item()
 ds = fairCV['Profiles Train']
 dy = fairCV['Biased Labels Train (Gender)']
