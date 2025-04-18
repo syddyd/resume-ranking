@@ -28,15 +28,29 @@ features = ds.squeeze()  # shape: (n_samples, n_features)
 labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
 df = pd.DataFrame(features)
 df['label'] = labels
-df['ethnicity'] = ds[:,0].astype(int) # supply actual values
+
+ethnicity_train_raw = fairCV['Profiles Train'][:, 0]
+gender_train = fairCV['Profiles Train'][:, 1]
+ethnicity_test_raw = fairCV['Profiles Test'][:, 0]
+gender_test = fairCV['Profiles Test'][:, 1]
 # Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
 ethnicity_map = {0: 0, 1: 1, 3: 2}
-ethnicity_norm = np.vectorize(ethnicity_map.get)(df)  # now values in [0, 1, 2]
-df['gender'] =  ds[:,1].astype(int)# supply actual values
+ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
+ethnicity_test = np.vectorize(ethnicity_map.get)(ethnicity_test_raw)
+group_ids_train = gender_train.astype(int) * 3 + ethnicity_train
+group_ids_test = gender_test.astype(int) * 3 + ethnicity_test
 
+dy = np.array(dy).reshape(-1,1)
+dy_test = np.array(dy_test).reshape(-1,1)
 # Define privileged/unprivileged groups
 privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
 unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
+
+train_features = {"tabular_features": ds}
+val_features = {"tabular_features": ds_test}
+
+
+
 
 aif_data = BinaryLabelDataset(
     df=df,
@@ -108,6 +122,8 @@ ranking_model = tfr.keras.model.create_keras_model(
     metrics=[tfr.keras.metrics.get(tfr.keras.metrics.RankingMetricKey.NDCG)],
 )
 
+train_dataset = tf.data.Dataset.from_tensor_slices((ds, dy, group_ids_train))
+train_dataset = train_dataset.shuffle(buffer_size=1024).batch(32)
 
 #MAKE SURE!!!! group_ids is a flat vector!!!!!
 '''3!= 6 intersectional groups'''
@@ -183,39 +199,11 @@ class FairnessAwareRankingLoss(tf.keras.losses.Loss):
 # Define base loss (e.g., pairwise or listwise)
 base_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS)
 
-# Fairness-aware loss
-fair_loss = FairnessAwareRankingLoss(
-    base_loss=base_loss_fn,
-    lambda_df=1.0,
-    epsilon_target=0.2,
-    num_groups=8
-)
-model.compile(optimizer='adam', loss=fair_loss)
-
-model.fit(
-    x=train_features,        # input tensor
-    y=train_labels,          # Ranking labels
-    sample_weight=group_ids, # Group IDs per example
-    batch_size=32,
-    epochs=10,
-    validation_data=(val_features, val_labels, val_group_ids)
-    callbacks=[CalibrationPlotCallback(val_inputs, val_labels, group_ids=val_group_ids)]
-)
-
-
 from aif360.algorithms.inprocessing import GerryFairClassifier
 
 clf = GerryFairClassifier(C=100, gamma=0.005, fairness_def='FP', printflag=False)
 clf.fit(aif_data)
-
-
-
-#Calibration Error
-from sklearn.calibration import calibration_curve
-import matplotlib.pyplot as plt
-
-
-
+gerry_probs = clf.predict(aif_data)
 
 def compute_ece(y_true, y_probs, n_bins=10):
     """Compute Expected Calibration Error (ECE)"""
@@ -230,22 +218,6 @@ def compute_ece(y_true, y_probs, n_bins=10):
             ece += (bin_size / len(y_true)) * np.abs(bin_acc - bin_conf)
     return ece
 
-#suppose preds is the name of the predictions of a model
-
-from scipy.special import expit  # Sigmoid function
-
-y_pred_raw = model(x)  # your TF model predictions (logits or scores)
-y_pred_probs = expit(y_pred_raw)  # convert scores to probabilities
-ece = compute_ece(y_true, y_pred_probs)
-print("Calibration Error (ECE) - TF Ranking:", ece)
-
-
-
-
-def total_loss_fn(y_true, y_pred, group_ids):
-    ranking_loss = ranking_loss_fn(y_true, y_pred)
-    df_penalty = differential_fairness_penalty(y_pred, group_ids)
-    return ranking_loss + λ_df * df_penalty
 
 
 def compute_group_counts(preds, group_ids, threshold=0.0, num_groups=8):
@@ -264,43 +236,12 @@ def compute_group_counts(preds, group_ids, threshold=0.0, num_groups=8):
         prob_positive_counts = tf.tensor_scatter_nd_add(prob_positive_counts, [[g]], [pos_in_group])
 
     return prob_positive_counts, total_counts
-
-
-# IN TRAINING 
-with tf.GradientTape() as tape:
-    preds = model(batch_x, training=True)
-    ranking_loss = ranking_loss_fn(batch_y, preds)
-
-    # Estimate group counts
-    p_counts, t_counts = compute_group_counts(preds, batch_group_ids, num_groups=num_groups)
-
-    df_penalty = fairness_loss(p_counts, t_counts, epsilon_target=0.2)
-    loss = ranking_loss + λ_df * df_penalty
-
-# Predict
-preds = clf.predict(aif_data)
-ece = compute_ece(np.array(y), np.array(preds))
-print("Calibration Error (ECE) - GerryFair:", ece)
-
-
-print("Subgroup accuracy:", metric.accuracy())
-print("Disparate Impact:", metric.disparate_impact())
-print("Equal opportunity difference:", metric.equal_opportunity_difference())
-# Access subgroup statistics
-clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
-
 '''
-
 
 Calibration Post Training 
 
 
-
 '''
-group_calibration = subgroup_ece(np.array(y), np.array(preds), np.array(group_ids))
-for g, e in group_calibration.items():
-    print(f"Group {g} ECE: {e:.4f}")
-
 import matplotlib.pyplot as plt
 from sklearn.calibration import calibration_curve
 
@@ -375,5 +316,74 @@ def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
     return group_ece
 
 
-evaluate_calibration(test_labels, y_pred_probs, test_group_ids, label="TF-Ranking")
-evaluate_calibration(np.array(y), np.array(gerry_probs), np.array(group_ids_test), label="GerryFair")
+
+ranking_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS)
+#Training loops
+fair_loss = FairnessAwareRankingLoss(
+    base_loss=base_loss_fn,
+    lambda_df=1.0,
+    epsilon_target=0.2,
+    num_groups=8
+)
+
+λ_df = 1.0
+for batch_x, batch_y, batch_group_ids in train_dataset:
+    with tf.GradientTape() as tape:
+        preds = model(batch_x, training=True)
+        ranking_loss = ranking_loss_fn(batch_y, preds)
+
+        # Estimate group counts
+        p_counts, t_counts = compute_group_counts(preds, batch_group_ids, num_groups=num_groups)
+
+        df_penalty = fair_loss(p_counts, t_counts, epsilon_target=0.2)
+        loss = ranking_loss + λ_df * df_penalty
+
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+#suppose preds is the name of the predictions of a model
+
+from scipy.special import expit  # Sigmoid function
+
+y_pred_raw = model(x)  # your TF model predictions (logits or scores)
+y_pred_probs = expit(y_pred_raw)  # convert scores to probabilities
+ece = compute_ece(dy_test, y_pred_probs)
+print("Calibration Error (ECE) - TF Ranking:", ece)
+
+evaluate_calibration(dy_test, y_pred_probs, group_ids_test, label="TF-Ranking")
+evaluate_calibration(np.array(df), np.array(gerry_probs), np.array(group_ids_test), label="GerryFair")
+
+
+
+model.compile(optimizer='adam', loss=fair_loss)
+
+model.fit(
+    x=train_features,        # input tensor
+    y=dy,          # Ranking labels
+    sample_weight=group_ids, # Group IDs per example
+    batch_size=32,
+    epochs=10,
+    validation_data=(val_features, dy_test, group_ids_test),
+    callbacks=[CalibrationPlotCallback(val_inputs, dy_test, group_ids=group_ids_test)])
+
+
+
+def total_loss_fn(y_true, y_pred, group_ids):
+   # ranking_loss = ranking_loss_fn(y_true, y_pred)
+    sample_weight = group_ids
+    return fair_loss(y_true, y_pred, sample_weight)
+
+
+ece = compute_ece(np.array(df), np.array(gerry_probs))
+
+group_calibration = subgroup_ece(np.array(df), np.array(preds), np.array(group_ids))
+for g, e in group_calibration.items():
+    print(f"Group {g} ECE: {e:.4f}")
+print("Calibration Error (ECE) - GerryFair:", ece)
+
+'''
+print("Subgroup accuracy:", metric.accuracy())
+print("Disparate Impact:", metric.disparate_impact())
+print("Equal opportunity difference:", metric.equal_opportunity_difference())
+# Access subgroup statistics'''
+clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
