@@ -37,8 +37,14 @@ scaledTestData = scaler.transform(X=dt)
 # Assume ds contains features, dy are binary labels, group_ids contain race, gender, etc.
 
 features = ds.squeeze()  # shape: (n_samples, n_features)
-labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
 df = pd.DataFrame(features)
-df['label'] = labels
-df['race'] = fairCV[:0]  # supply actual values
-df['gender'] = fairCV[:1]  # supply actual values
+df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'language_prof4']
+
+df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+df.info()
+
+
+#creating test and train sets for group ids 
+#should return lists of groups as 3d Vectors 

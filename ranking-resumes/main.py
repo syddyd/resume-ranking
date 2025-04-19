@@ -45,6 +45,15 @@ ethnicity_train_raw = fairCV['Profiles Train'][:, 0]
 gender_train = fairCV['Profiles Train'][:, 1]
 ethnicity_test_raw = fairCV['Profiles Test'][:, 0]
 gender_test = fairCV['Profiles Test'][:, 1]
+
+#generate group codes 
+df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'language_prof4']
+
+df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+df.info()
+
 # Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
 ethnicity_map = {0: 0, 1: 1, 3: 2}
 ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
