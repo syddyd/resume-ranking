@@ -48,14 +48,24 @@ gender_train = fairCV['Profiles Train'][:, 1]
 ethnicity_test_raw = fairCV['Profiles Test'][:, 0]
 gender_test = fairCV['Profiles Test'][:, 1]
 
-#generate group codes 
+features = ds.squeeze()  # shape: (n_samples, n_features)
+df = pd.DataFrame(features)
 df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
                 'language_prof3', 'language_prof4']
 
-#group codes (G1 Man = 00, G1 Woman = 01 G2 Man = 10 G2 Woman = 11 G3 Man = 30 G3 Woman = 31 )
+dt = pd.DataFrame(dt)
+dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'language_prof4']
+
+
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
-df.info()
+dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+
+scaler = StandardScaler() 
+scaledData = scaler.fit_transform(X=df)
+scaledTestData = scaler.transform(X=dt)
 
 # Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
 ethnicity_map = {0: 0, 1: 1, 3: 2}

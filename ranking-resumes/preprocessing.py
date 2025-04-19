@@ -29,10 +29,8 @@ dt = ds_test.squeeze()
 
 labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
 
-#use sklearn standard scaler to scale the data 
-scaler = StandardScaler() 
-scaledData = scaler.fit_transform(X=df)
-scaledTestData = scaler.transform(X=dt)
+
+
 
 # Assume ds contains features, dy are binary labels, group_ids contain race, gender, etc.
 
@@ -42,8 +40,19 @@ df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainme
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
                 'language_prof3', 'language_prof4']
 
+dt = pd.DataFrame(dt)
+dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'language_prof4']
+
+
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
-df.info()
+dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+
+scaler = StandardScaler() 
+scaledData = scaler.fit_transform(X=df)
+scaledTestData = scaler.transform(X=dt)
+print(scaledData[:10])
 
 
 #creating test and train sets for group ids 
