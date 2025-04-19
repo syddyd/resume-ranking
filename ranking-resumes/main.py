@@ -51,6 +51,7 @@ df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainme
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
                 'language_prof3', 'language_prof4']
 
+#group codes (G1 Man = 00, G1 Woman = 01 G2 Man = 10 G2 Woman = 11 G3 Man = 30 G3 Woman = 31 )
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
 df.info()
 
