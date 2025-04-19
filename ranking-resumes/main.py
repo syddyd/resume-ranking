@@ -8,11 +8,12 @@ from sklearn.preprocessing import StandardScaler
 
 # Suppose you want to protect 'race' and 'gender' at once:
 # You must provide them in the features or as separate attributes
-fairCV = np.load("./FairCVdb.npy", allow_pickle = True).item()
+fairCV = np.load("./data/FairCVdb.npy", allow_pickle = True).item()
 ds = fairCV['Profiles Train']
 dy = fairCV['Biased Labels Train (Gender)']
 
 ds_test = fairCV['Profiles Test']
+dy_test = fairCV['Biased Labels Train (Gender)']
 
 #get rid of the facial encodings and shuffle
 ds = np.delete(ds, np.s_[12:51], axis=1)
@@ -42,6 +43,7 @@ df = pd.DataFrame(features)
 df['label'] = labels
 
 ethnicity_train_raw = fairCV['Profiles Train'][:, 0]
+print("Unique ethnicity values found:", np.unique(ethnicity_train_raw))
 gender_train = fairCV['Profiles Train'][:, 1]
 ethnicity_test_raw = fairCV['Profiles Test'][:, 0]
 gender_test = fairCV['Profiles Test'][:, 1]
