@@ -50,29 +50,31 @@ gender_test = fairCV['Profiles Test'][:, 1]
 
 features = ds.squeeze()  # shape: (n_samples, n_features)
 df = pd.DataFrame(features)
-df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
-                'language_prof3', 'language_prof4']
+                'language_prof3']
 
 dt = pd.DataFrame(dt)
-dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
-                'language_prof3', 'language_prof4']
+                'language_prof3']
 
 
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+df = df.assign(labels = fairCV['Blind Labels Train'])
 dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+dt = dt.assign(labels = fairCV['Blind Labels Test'])
 
 scaler = StandardScaler() 
 scaledData = scaler.fit_transform(X=df)
 scaledTestData = scaler.transform(X=dt)
 
 # Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
-ethnicity_map = {0: 0, 1: 1, 3: 2}
-ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
-ethnicity_test = np.vectorize(ethnicity_map.get)(ethnicity_test_raw)
-group_ids_train = gender_train.astype(int) * 3 + ethnicity_train
-group_ids_test = gender_test.astype(int) * 3 + ethnicity_test
+#ethnicity_map = {0: 0, 1: 1, 3: 2}
+#ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
+#ethnicity_test = np.vectorize(ethnicity_map.get)(ethnicity_test_raw)
+#group_ids_train = gender_train.astype(int) * 3 + ethnicity_train
+#group_ids_test = gender_test.astype(int) * 3 + ethnicity_test
 
 dy = np.array(dy).reshape(-1,1)
 dy_test = np.array(dy_test).reshape(-1,1)
@@ -82,9 +84,6 @@ unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
 
 train_features = {"tabular_features": ds}
 val_features = {"tabular_features": ds_test}
-
-
-
 
 aif_data = BinaryLabelDataset(
     df=df,

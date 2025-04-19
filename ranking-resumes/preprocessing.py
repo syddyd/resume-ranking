@@ -8,7 +8,7 @@ from sklearn.preprocessing import StandardScaler
 
 # Suppose you want to protect 'race' and 'gender' at once:
 # You must provide them in the features or as separate attributes
-fairCV = np.load("./FairCVdb.npy", allow_pickle = True).item()
+fairCV = np.load("./data/FairCVdb.npy", allow_pickle = True).item()
 ds = fairCV['Profiles Train']
 dy = fairCV['Biased Labels Train (Gender)']
 
@@ -36,23 +36,38 @@ labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
 
 features = ds.squeeze()  # shape: (n_samples, n_features)
 df = pd.DataFrame(features)
-df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
-                'language_prof3', 'language_prof4']
+                'language_prof3']
 
 dt = pd.DataFrame(dt)
-dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
-                'language_prof3', 'language_prof4']
+                'language_prof3']
 
 
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+df = df.assign(labels = fairCV['Blind Labels Train'])
 dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+dt = dt.assign(labels = fairCV['Blind Labels Test'])
 
 scaler = StandardScaler() 
 scaledData = scaler.fit_transform(X=df)
 scaledTestData = scaler.transform(X=dt)
-print(scaledData[:10])
+
+scaledData = pd.DataFrame(scaledData)
+scaledData.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'group_id', 'label']
+
+scaledTestData = pd.DataFrame(scaledTestData)
+scaledTestData = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'group_id', 'label']
+
+scaledData = scaledData.to_numpy()
+
+print(scaledData['gender'])
 
 
 #creating test and train sets for group ids 

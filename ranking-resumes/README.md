@@ -1,7 +1,7 @@
 gotta install tensorflow with 
 !pip install tensorflow; 
 !pip install -q tensorflow-ranking; 
-!pip install typing-extensions==4.13.1;
+!pip install 
 
 !!Disclaimer i had to use a virtual environment for tensorflow as i have too advanced a version on my puter!!
 
