@@ -3,7 +3,7 @@ import tensorflow as tf
 import tensorflow_ranking as tfr
 import numpy as np 
 import pandas as pd
-from aif360.datasets import BinaryLabelDataset
+from aif360.datasets import StructuredDataset
 from sklearn.preprocessing import StandardScaler
 
 # Suppose you want to protect 'race' and 'gender' at once:
@@ -69,6 +69,12 @@ scaler = StandardScaler()
 scaledData = scaler.fit_transform(X=df)
 scaledTestData = scaler.transform(X=dt)
 
+
+scaledData = pd.DataFrame(scaledData)
+scaledData.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'group_id', 'label']
+
 # Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
 #ethnicity_map = {0: 0, 1: 1, 3: 2}
 #ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
@@ -85,10 +91,10 @@ unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
 train_features = {"tabular_features": ds}
 val_features = {"tabular_features": ds_test}
 
-aif_data = BinaryLabelDataset(
-    df=df,
+aif_data = StructuredDataset(
+    df=scaledData,
     label_names=['label'],
-    protected_attribute_names=['ethnicity', 'gender']
+    protected_attribute_names=['group_id']
 )
 
 

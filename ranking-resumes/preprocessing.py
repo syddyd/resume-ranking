@@ -56,18 +56,23 @@ scaledData = scaler.fit_transform(X=df)
 scaledTestData = scaler.transform(X=dt)
 
 scaledData = pd.DataFrame(scaledData)
-scaledData.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
+lbls = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
                 'language_prof3', 'group_id', 'label']
+scaledData.columns = lbls
 
 scaledTestData = pd.DataFrame(scaledTestData)
 scaledTestData = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
                 'language_prof3', 'group_id', 'label']
 
-scaledData = scaledData.to_numpy()
+df_final = np.array()
+for label in lbls : 
+    df_final = np.append(df_final,  )
 
-print(scaledData['gender'])
+gender_col = scaledData[:,1]
+
+print(gender_col)
 
 
 #creating test and train sets for group ids 
