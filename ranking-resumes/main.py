@@ -6,7 +6,7 @@ import pandas as pd
 from aif360.datasets import StructuredDataset
 from sklearn.preprocessing import StandardScaler
 
-# Suppose you want to protect 'race' and 'gender' at once:
+
 
 fairCV = np.load("./data/FairCVdb.npy", allow_pickle=True).item()
 X_train_raw = np.delete(fairCV['Profiles Train'], np.s_[12:51], axis=1)  # Remove embeddings
@@ -134,8 +134,8 @@ val_dataset = val_dataset.map(format_input)
 
 
 
-
 print("PREPROCESSING DONE")
+
 
 '''
 
@@ -203,13 +203,31 @@ class FairnessAwareRankingLoss(tf.keras.losses.Loss):
 
 
 
+from scipy.special import expit  
 from aif360.algorithms.inprocessing import GerryFairClassifier
+from sklearn.linear_model import LinearRegression
+clf = GerryFairClassifier(predictor=LinearRegression(),C=100, gamma=0.01, fairness_def='FP', printflag=False)
 
-clf = GerryFairClassifier(C=100, gamma=0.005, fairness_def='FP', printflag=False)
+binary_labels = (aif_data_train.labels.flatten()>0.5).astype(int)
+aif_data_train.labels=binary_labels.reshape(-1, 1)
+aif_data_test.labels = (aif_data_test.labels.flatten() > 0.5).astype(int).reshape(-1, 1)
+print("Training features shape:", aif_data_train.features.shape)
+print("Training labels shape:", aif_data_train.labels.shape)
+print("Unique labels:", np.unique(aif_data_train.labels))
+
+# Sanity check: are all feature rows valid?
+print("Any NaNs in features?", np.isnan(aif_data_train.features).any())
+print("Any NaNs in labels?", np.isnan(aif_data_train.labels).any())
+print("Label distribution:", np.bincount(aif_data_train.labels.flatten().astype(int)))
+
 clf.fit(aif_data_train)
-gerry_preds = clf.predict(aif_data_test).labels.flatten()
+
+preds_dataset = clf.predict(aif_data_test)
+gerry_preds=preds_dataset.labels.flatten()
+gerry_probs = preds_dataset.scores.flatten()# for post-processing and calibration
 y_true = aif_data_test.labels.flatten()
 group_ids = aif_data_test.protected_attributes.dot([10, 1])  # ethnicity * 10 + gender
+
 def compute_ece(y_true, y_probs, n_bins=10):
     """Compute Expected Calibration Error (ECE)"""
     bin_boundaries = np.linspace(0.0, 1.0, n_bins + 1)
@@ -248,10 +266,8 @@ Calibration Post Training
 
 '''
 import matplotlib.pyplot as plt
+
 from sklearn.calibration import calibration_curve
-
-
-
 
 def plot_calibration_curve(y_true, y_probs, title="Calibration Curve", filename=None):
     prob_true, prob_pred = calibration_curve(y_true, y_probs, n_bins=10, pos_label=1)
@@ -283,15 +299,23 @@ def plot_subgroup_ece(self, y_true, y_prob, group_ids):
 
 
 def evaluate_calibration(y_true, y_probs, group_ids=None, label="Model"):
+    # Force binary labels
+    y_true = np.array(y_true).flatten()
+    if y_true.max() > 1 or y_true.min() < 0:
+        y_true = (y_true > 0.5).astype(int)
+        
+    y_probs = np.array(y_probs).flatten()
+
     ece = compute_ece(y_true, y_probs)
-    print(f"{label} Calibration Error (ECE): {ece:.4f}")
-    
+    print(f"{label} ECE: {ece:.4f}")
+
     if group_ids is not None:
-        group_ece = subgroup_ece(y_true, y_probs, group_ids)
+        group_ece = subgroup_ece(y_true, y_probs, np.array(group_ids))
         for g, e in group_ece.items():
             print(f"{label} Group {g} ECE: {e:.4f}")
-    
-    plot_calibration_curve(y_true, y_probs)
+
+    plot_calibration_curve(y_true, y_probs, title=f"{label} Calibration Curve")
+
 
 
 def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
@@ -324,7 +348,7 @@ model.fit(
     y_train,          # shape: [batch, 1]
     sample_weight=group_ids_train,  # shape: [batch]
     batch_size=32,
-    epochs=5,
+    epochs=10,
     validation_data=(X_test, y_test, group_ids_test)
 )
 
@@ -333,7 +357,6 @@ model.fit(
 
 #suppose preds is the name of the predictions of a model
 
-from scipy.special import expit  # Sigmoid function
 
 y_logits = model.predict(X_test).flatten()
 y_probs = expit(y_logits)  # scores → probabilities in [0, 1]
@@ -343,15 +366,15 @@ ece = compute_ece(y_test.flatten(), y_probs)
 print(f"TF-Ranking CNN Model ECE: {ece:.4f}")
 
 #Subgroup ECE
-group_calibration = subgroup_ece(y_true, gerry_preds, group_ids)
+group_calibration = subgroup_ece(y_true, gerry_probs, group_ids)
 for g, e in group_calibration.items():
     print(f"Group {g} ECE: {e:.4f}")
 print("Calibration Error (ECE) - GerryFair:", ece)
 
 
 
-evaluate_calibration(y_test, y_probs, group_ids_test, label="TF-Ranking")
-evaluate_calibration(np.array(y_train), np.array(gerry_preds), np.array(group_ids_test), label="GerryFair")
+evaluate_calibration(y_true, y_probs, group_ids_test, label="TF-Ranking")
+evaluate_calibration(np.array(y_true), np.array(gerry_probs), np.array(group_ids), label="GerryFair")
 
 
 yhat = model.predict(X_test).flatten()
@@ -366,7 +389,7 @@ def total_loss_fn(y_true, y_pred, group_ids):
     return fair_loss(y_true, y_pred, sample_weight)
 
 
-ece = compute_ece(np.array(df_train), np.array(gerry_preds))
+ece = compute_ece(y_true, gerry_probs)
 
 
 
@@ -375,4 +398,50 @@ print("Subgroup accuracy:", metric.accuracy())
 print("Disparate Impact:", metric.disparate_impact())
 print("Equal opportunity difference:", metric.equal_opportunity_difference())
 # Access subgroup statistics'''
-clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
+#clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
+'''
+
+POST PROCESSING
+
+'''
+from multicalibration import MulticalibrationPredictor
+
+probs = expit(model.predict(X_test).flatten())     # CNN logits → probabilities
+labels = (y_test.flatten() > 0.5).astype(int)      # binary ground-truth
+group_ids = group_ids_test           
+              # 1D array of group IDs
+
+# Create Boolean masks per group
+unique_groups = np.unique(group_ids)
+subgroups = [(group_ids == g) for g in unique_groups]  # list of bool masks
+for i, mask in enumerate(subgroups):
+    print(f"Group {i} mask shape: {mask.shape}, dtype: {mask.dtype}, True count: {np.sum(mask)}")
+# Sanitize subgroups
+sanitized_subgroups = [np.asarray(g).astype(bool).flatten() for g in subgroups]
+
+hkrr_params = {
+    'alpha': 0.05,
+    'lambda': 0.001,
+    'max_iter': 200,
+    'randomized': True,
+    'use_oracle': False,
+}
+probs = np.asarray(probs).astype(np.float32).flatten()
+labels = np.asarray(labels).astype(np.int32).flatten()
+
+print("Shape of probs:", probs.shape)  # should be (N,)
+print("Shape of labels:", labels.shape)  # should also be (N,)
+print("Sample probs:", probs[:5])  # Should look like: [0.73, 0.52, ...]
+print("Type of probs[0]:", type(probs[0]))  # Should be <class 'numpy.float32'>
+print("Type of probs[0:1]:", type(probs[0:1]))       # ndarray
+print("Type of probs[subgroups[0]][0]:", type(probs[subgroups[0]][0]))  # must also be scalar
+
+# Run HKRR Multicalibration
+mcb = MulticalibrationPredictor('HKRR')
+mcb.fit(probs, labels, sanitized_subgroups, hkrr_params)
+
+# Get post-processed calibrated probabilities
+calibrated_probs = mcb.predict(probs, subgroups)
+
+print("ECE before:", compute_ece(labels, probs))
+print("ECE after (HKRR):", compute_ece(labels, calibrated_probs))
