@@ -50,16 +50,46 @@ scaledTestData = scaler.transform(X=dt)
 '''
 # Assume ds contains features, dy are binary labels, group_ids contain race, gender, etc.
 
+features = ds.squeeze()  # shape: (n_samples, n_features)
+labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
+df = pd.DataFrame(features)
+df['label'] = labels
 
-df_train['label'] = y_train
-df_test['label'] = y_test
-df_train['group_id'] = group_ids_train
-df_test['group_id'] = group_ids_test
+ethnicity_train_raw = fairCV['Profiles Train'][:, 0]
+print("Unique ethnicity values found:", np.unique(ethnicity_train_raw))
+gender_train = fairCV['Profiles Train'][:, 1]
+ethnicity_test_raw = fairCV['Profiles Test'][:, 0]
+gender_test = fairCV['Profiles Test'][:, 1]
 
-'''
+features = ds.squeeze()  # shape: (n_samples, n_features)
+df = pd.DataFrame(features)
+df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'language_prof4']
+
+dt = pd.DataFrame(dt)
+dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment'
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'language_prof4']
+
+
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
+df = df.assign(labels = fairCV['Blind Labels Train'])
 dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
-'''
+
+scaler = StandardScaler() 
+scaledData = scaler.fit_transform(X=df)
+scaledTestData = scaler.transform(X=dt)
+
+# Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
+ethnicity_map = {0: 0, 1: 1, 3: 2}
+ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
+ethnicity_test = np.vectorize(ethnicity_map.get)(ethnicity_test_raw)
+group_ids_train = gender_train.astype(int) * 3 + ethnicity_train
+group_ids_test = gender_test.astype(int) * 3 + ethnicity_test
+
+dy = np.array(dy).reshape(-1,1)
+dy_test = np.array(dy_test).reshape(-1,1)
 # Define privileged/unprivileged groups
 feature_cols = [col for col in columns if col not in ['ethnicity', 'gender']]
 scaler = StandardScaler()
@@ -68,17 +98,16 @@ df_test[feature_cols] = scaler.transform(df_test[feature_cols])
 privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
 unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
 
+train_features = {"tabular_features": ds}
+val_features = {"tabular_features": ds_test}
 
-aif_data_train = StructuredDataset(
-    df=df_train,
-    label_names=['label'],
-    protected_attribute_names=['ethnicity', 'gender']
-)
 
-aif_data_test = StructuredDataset(
-    df=df_test,
+
+
+aif_data = BinaryLabelDataset(
+    df=df,
     label_names=['label'],
-    protected_attribute_names=['ethnicity', 'gender']
+    protected_attribute_names=['group_id']
 )
 
 for i in range(5):
