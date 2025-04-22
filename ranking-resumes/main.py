@@ -108,18 +108,7 @@ base_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS
 
 # Final model
 model = tf.keras.Model(inputs=inputs, outputs=x)
-#MAKE SURE!!!! group_ids is a flat vector!!!!!
-'''3!= 6 intersectional groups
-num_ethnicities = 3  # G1, G2, G3 (after mapping)
-group_ids_train = fairCV['Group IDs Train'] 
-group_ids_test = fairCV['Group IDs Test']
-'''
-'''ranking_model = tfr.keras.model.create_keras_model(
-    input_creator=lambda: {"float_features": tf.keras.Input(shape=(1, 12))},
-    scoring_function=model,
-    loss=tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS),
-    metrics=[tfr.keras.metrics.get(tfr.keras.metrics.RankingMetricKey.NDCG)],
-)'''
+
 
 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, group_ids_train))
 train_dataset = train_dataset.shuffle(buffer_size=1024).batch(32)
@@ -417,7 +406,7 @@ subgroups = [(group_ids == g) for g in unique_groups]  # list of bool masks
 for i, mask in enumerate(subgroups):
     print(f"Group {i} mask shape: {mask.shape}, dtype: {mask.dtype}, True count: {np.sum(mask)}")
 # Sanitize subgroups
-sanitized_subgroups = [np.asarray(g).astype(bool).flatten() for g in subgroups]
+sanitized_subgroups = [np.array(mask, dtype=bool).flatten() for mask in subgroups]
 
 hkrr_params = {
     'alpha': 0.05,
@@ -435,6 +424,10 @@ print("Sample probs:", probs[:5])  # Should look like: [0.73, 0.52, ...]
 print("Type of probs[0]:", type(probs[0]))  # Should be <class 'numpy.float32'>
 print("Type of probs[0:1]:", type(probs[0:1]))       # ndarray
 print("Type of probs[subgroups[0]][0]:", type(probs[subgroups[0]][0]))  # must also be scalar
+
+assert probs.ndim == 1 and labels.ndim == 1
+assert all(mask.shape == probs.shape for mask in sanitized_subgroups)
+assert all(mask.dtype == bool for mask in sanitized_subgroups)
 
 # Run HKRR Multicalibration
 mcb = MulticalibrationPredictor('HKRR')
