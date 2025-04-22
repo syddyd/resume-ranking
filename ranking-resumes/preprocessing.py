@@ -57,3 +57,17 @@ print(scaledData[:10])
 
 #creating test and train sets for group ids 
 #should return lists of groups as 3d Vectors 
+
+
+
+
+
+from aif360.datasets import StructuredDataset
+
+aif_data = StructuredDataset(
+    df=df,
+    label_names=['label'],
+    protected_attribute_names=['ethnicity', 'gender'],
+    privileged_classes=[{'ethnicity': 1}, {'gender': 1}],
+    features_to_drop=[]  
+)

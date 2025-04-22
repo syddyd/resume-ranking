@@ -1,0 +1,12 @@
+#libraries
+#applications
+
+aif360
+cvxpy 
+tensorflow_ranking
+tensorflow
+pandas
+numpy
+sklearn
+matlabplot
+scipy

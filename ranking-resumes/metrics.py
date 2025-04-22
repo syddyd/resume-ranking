@@ -7,8 +7,8 @@ from aif360.metrics import ClassificationMetric
 metric = ClassificationMetric(
     aif_data,
     preds,
-    unprivileged_groups=unprivileged_groups,
-    privileged_groups=privileged_groups
+    privileged_groups=[{'ethnicity': 1}, {'gender': 1}],
+    unprivileged_groups=[{'ethnicity': 0}, {'gender': 0}]
 )
 #   Subgroup metrics
 #heatmap
