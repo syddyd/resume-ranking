@@ -32,7 +32,7 @@ gender_test = fairCV['Profiles Test'][:, 1]
 
 group_ids_train = (ethnicity_train * 10 + gender_train).astype(int)
 group_ids_test = (ethnicity_test * 10 + gender_test).astype(int)
-
+#print("Shape of group ids_test:" , group_ids_test.shape)
 columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
            'prev_exp', 'recommendation', 'availability',
            'language_prof0', 'language_prof1', 'language_prof2', 
@@ -103,20 +103,23 @@ x = tf.keras.layers.GlobalAveragePooling1D()(x)
 x = tf.keras.layers.Dense(1)(x)
 
 '''
+# Define base loss (e.g., pairwise or listwise)
+base_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS)
+
 # Final model
 model = tf.keras.Model(inputs=inputs, outputs=x)
 #MAKE SURE!!!! group_ids is a flat vector!!!!!
-'''3!= 6 intersectional groups'''
+'''3!= 6 intersectional groups
 num_ethnicities = 3  # G1, G2, G3 (after mapping)
 group_ids_train = fairCV['Group IDs Train'] 
 group_ids_test = fairCV['Group IDs Test']
-
-ranking_model = tfr.keras.model.create_keras_model(
+'''
+'''ranking_model = tfr.keras.model.create_keras_model(
     input_creator=lambda: {"float_features": tf.keras.Input(shape=(1, 12))},
     scoring_function=model,
     loss=tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS),
     metrics=[tfr.keras.metrics.get(tfr.keras.metrics.RankingMetricKey.NDCG)],
-)
+)'''
 
 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, group_ids_train))
 train_dataset = train_dataset.shuffle(buffer_size=1024).batch(32)
@@ -130,6 +133,10 @@ train_dataset = train_dataset.map(format_input)
 val_dataset = val_dataset.map(format_input)
 
 
+
+
+print("PREPROCESSING DONE")
+
 '''
 
 IN PROCESSING TRAINING LOOPS FAIRNESS CLASSIFIER 
@@ -139,7 +146,7 @@ GERRYFAIR AND DIFFERENTIAL FAIRNESS
 '''
 
 class FairnessAwareRankingLoss(tf.keras.losses.Loss):
-    def __init__(self, base_loss, lambda_df=1.0, epsilon_target=0.0, num_groups=8, name="fairness_aware_loss"):
+    def __init__(self, base_loss, lambda_df=1.0, epsilon_target=0.2, num_groups=6, name="fairness_aware_loss"):
         super().__init__(name=name)
         self.base_loss = base_loss  
         self.lambda_df = lambda_df
@@ -194,15 +201,15 @@ class FairnessAwareRankingLoss(tf.keras.losses.Loss):
         fairness_penalty = self.fairness_loss(prob_positive_counts, total_counts)
         return base + self.lambda_df * fairness_penalty
 
-# Define base loss (e.g., pairwise or listwise)
-base_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS)
+
 
 from aif360.algorithms.inprocessing import GerryFairClassifier
 
 clf = GerryFairClassifier(C=100, gamma=0.005, fairness_def='FP', printflag=False)
 clf.fit(aif_data_train)
-gerry_probs = clf.predict(aif_data_test)
-
+gerry_preds = clf.predict(aif_data_test).labels.flatten()
+y_true = aif_data_test.labels.flatten()
+group_ids = aif_data_test.protected_attributes.dot([10, 1])  # ethnicity * 10 + gender
 def compute_ece(y_true, y_probs, n_bins=10):
     """Compute Expected Calibration Error (ECE)"""
     bin_boundaries = np.linspace(0.0, 1.0, n_bins + 1)
@@ -243,41 +250,24 @@ Calibration Post Training
 import matplotlib.pyplot as plt
 from sklearn.calibration import calibration_curve
 
-class CalibrationPlotCallback(tf.keras.callbacks.Callback):
-    def __init__(self, x_val, y_val, group_ids=None, n_bins=10):
-        super().__init__()
-        self.x_val = x_val
-        self.y_val = y_val
-        self.group_ids = group_ids
-        self.n_bins = n_bins
 
-    def on_epoch_end(self, epoch, logs=None):
-        y_pred = self.model.predict(self.x_val).flatten()
-        y_true = self.y_val.flatten()
 
-        # Apply sigmoid if needed
-        from scipy.special import expit
-        y_prob = expit(y_pred)
 
-        self.plot_calibration(y_true, y_prob, epoch)
+def plot_calibration_curve(y_true, y_probs, title="Calibration Curve", filename=None):
+    prob_true, prob_pred = calibration_curve(y_true, y_probs, n_bins=10, pos_label=1)
+    plt.figure()
+    plt.plot(prob_pred, prob_true, marker='o', label="Model")
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label="Perfectly calibrated")
+    plt.xlabel("Predicted Probability")
+    plt.ylabel("Empirical Accuracy")
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    if filename:
+        plt.savefig(filename)
+    plt.show()
 
-        if self.group_ids is not None:
-            self.plot_subgroup_ece(y_true, y_prob, self.group_ids)
-
-    def plot_calibration(self, y_true, y_prob, epoch):
-        prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=self.n_bins)
-        plt.figure()
-        plt.plot(prob_pred, prob_true, marker='o', label='Model')
-        plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
-        plt.title(f'Calibration Curve - Epoch {epoch+1}')
-        plt.xlabel('Predicted Probability')
-        plt.ylabel('Empirical Probability')
-        plt.legend()
-        plt.grid()
-        plt.savefig(f'calibration_epoch_{epoch+1}.png')
-        plt.close()
-
-    def plot_subgroup_ece(self, y_true, y_prob, group_ids):
+def plot_subgroup_ece(self, y_true, y_prob, group_ids):
         from collections import defaultdict
         import numpy as np
 
@@ -301,7 +291,7 @@ def evaluate_calibration(y_true, y_probs, group_ids=None, label="Model"):
         for g, e in group_ece.items():
             print(f"{label} Group {g} ECE: {e:.4f}")
     
-    plot_calibration(y_true, y_probs, label=label)
+    plot_calibration_curve(y_true, y_probs)
 
 
 def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
@@ -309,8 +299,9 @@ def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
     unique_groups = np.unique(group_ids)
     for g in unique_groups:
         mask = group_ids == g
-        ece_g = compute_ece(y_true[mask], y_probs[mask], n_bins)
-        group_ece[g] = ece_g
+        if np.sum(mask) < 10:
+            continue
+        group_ece[g] = compute_ece(y_true[mask], y_probs[mask], n_bins)
     return group_ece
 
 
@@ -322,42 +313,46 @@ fair_loss = FairnessAwareRankingLoss(
     base_loss=base_loss_fn,
     lambda_df=1.0,
     epsilon_target=0.2,
-    num_groups=8
+    num_groups=6
+)
+model.compile(
+    optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.01),
+    loss=fair_loss
+)
+model.fit(
+    X_train,          # shape: [batch, 1, 12]
+    y_train,          # shape: [batch, 1]
+    sample_weight=group_ids_train,  # shape: [batch]
+    batch_size=32,
+    epochs=5,
+    validation_data=(X_test, y_test, group_ids_test)
 )
 
-λ_df = 1.0
-for batch_x, batch_y, batch_group_ids in train_dataset:
-    with tf.GradientTape() as tape:
-        preds = model(batch_x, training=True)
-        ranking_loss = ranking_loss_fn(batch_y, preds)
 
-        # Estimate group counts
-        p_counts, t_counts = compute_group_counts(preds, batch_group_ids, num_groups=num_groups)
 
-        df_penalty = fair_loss(p_counts, t_counts, epsilon_target=0.2)
-        loss = ranking_loss + λ_df * df_penalty
-
-    gradients = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
 #suppose preds is the name of the predictions of a model
 
 from scipy.special import expit  # Sigmoid function
 
-y_pred_raw = model(x)  # your TF model predictions (logits or scores)
-y_pred_probs = expit(y_pred_raw)  # convert scores to probabilities
-ece = compute_ece(y_test, y_pred_probs)
-print("Calibration Error (ECE) - TF Ranking:", ece)
+y_logits = model.predict(X_test).flatten()
+y_probs = expit(y_logits)  # scores → probabilities in [0, 1]
 
-evaluate_calibration(y_test, y_pred_probs, group_ids_test, label="TF-Ranking")
-evaluate_calibration(np.array(df), np.array(gerry_probs), np.array(group_ids_test), label="GerryFair")
+# Compute ECE
+ece = compute_ece(y_test.flatten(), y_probs)
+print(f"TF-Ranking CNN Model ECE: {ece:.4f}")
 
-ranking_model.fit(
-    train_dataset,
-    epochs=3,
-    validation_data=val_dataset
-    
-)
+#Subgroup ECE
+group_calibration = subgroup_ece(y_true, gerry_preds, group_ids)
+for g, e in group_calibration.items():
+    print(f"Group {g} ECE: {e:.4f}")
+print("Calibration Error (ECE) - GerryFair:", ece)
+
+
+
+evaluate_calibration(y_test, y_probs, group_ids_test, label="TF-Ranking")
+evaluate_calibration(np.array(y_train), np.array(gerry_preds), np.array(group_ids_test), label="GerryFair")
+
 
 yhat = model.predict(X_test).flatten()
 accuracy = np.mean(np.abs(yhat - y_test.flatten()) < 0.002) * 100
@@ -371,12 +366,9 @@ def total_loss_fn(y_true, y_pred, group_ids):
     return fair_loss(y_true, y_pred, sample_weight)
 
 
-ece = compute_ece(np.array(df_train), np.array(gerry_probs))
+ece = compute_ece(np.array(df_train), np.array(gerry_preds))
 
-group_calibration = subgroup_ece(np.array(df_train), np.array(preds), np.array(group_ids_train))
-for g, e in group_calibration.items():
-    print(f"Group {g} ECE: {e:.4f}")
-print("Calibration Error (ECE) - GerryFair:", ece)
+
 
 '''
 print("Subgroup accuracy:", metric.accuracy())
