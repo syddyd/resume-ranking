@@ -6,62 +6,58 @@ import pandas as pd
 from aif360.datasets import StructuredDataset
 from sklearn.preprocessing import StandardScaler
 
-# Suppose you want to protect 'race' and 'gender' at once:
-# You must provide them in the features or as separate attributes
-fairCV = np.load("./data/FairCVdb.npy", allow_pickle = True).item()
-ds = fairCV['Profiles Train']
-dy = fairCV['Biased Labels Train (Gender)']
 
-ds_test = fairCV['Profiles Test']
-dy_test = fairCV['Biased Labels Train (Gender)']
 
-#get rid of the facial encodings and shuffle
-ds = np.delete(ds, np.s_[12:51], axis=1)
-np.random.shuffle(ds)
-ds = np.reshape(ds, (-1, 1, ds.shape[1]))
+fairCV = np.load("./data/FairCVdb.npy", allow_pickle=True).item()
+X_train_raw = np.delete(fairCV['Profiles Train'], np.s_[12:51], axis=1)  # Remove embeddings
+X_test_raw = np.delete(fairCV['Profiles Test'], np.s_[12:51], axis=1)
 
-ds_test = np.delete(ds_test, np.s_[12:51], axis=1)
-np.random.shuffle(ds_test)
-ds_test = np.reshape(ds_test, (-1, 1, ds_test.shape[1]))
+y_train = np.array(fairCV['Biased Labels Train (Gender)']).reshape(-1, 1)
+y_test = np.array(fairCV['Blind Labels Test']).reshape(-1, 1)
 
-#get rid of data labels 
-df = ds.squeeze()  # shape: (n_samples, n_features)
-dt = ds_test.squeeze()
+rng = np.random.default_rng(seed=42)
+rng.shuffle(X_train_raw)
+rng.shuffle(X_test_raw)
 
-labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
+# === Reshape for CNN Input [batch_size, 1, 12] ===
+X_train = X_train_raw.reshape(-1, 1, 12).astype(np.float32)
+X_test = X_test_raw.reshape(-1, 1, 12).astype(np.float32)
 
+ethnicity_train = fairCV['Profiles Train'][:, 0]
+print("Unique ethnicity values found:", np.unique(ethnicity_train))
+gender_train = fairCV['Profiles Train'][:, 1]
+ethnicity_test = fairCV['Profiles Test'][:, 0]
+gender_test = fairCV['Profiles Test'][:, 1]
+
+
+group_ids_train = (ethnicity_train * 10 + gender_train).astype(int)
+group_ids_test = (ethnicity_test * 10 + gender_test).astype(int)
+#print("Shape of group ids_test:" , group_ids_test.shape)
+columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
+           'prev_exp', 'recommendation', 'availability',
+           'language_prof0', 'language_prof1', 'language_prof2', 
+           'language_prof3']
+
+# === Create pandas DataFrames for StructuredDataset ===
+df_train = pd.DataFrame(X_train_raw, columns=columns)
+df_test = pd.DataFrame(X_test_raw, columns=columns)
+
+'''
 #use sklearn standard scaler to scale the data 
 scaler = StandardScaler() 
 scaledData = scaler.fit_transform(X=df)
 scaledTestData = scaler.transform(X=dt)
-
+'''
 # Assume ds contains features, dy are binary labels, group_ids contain race, gender, etc.
 
-features = ds.squeeze()  # shape: (n_samples, n_features)
-labels = np.array(dy).reshape(-1, 1)  # shape: (n_samples, 1)
-df = pd.DataFrame(features)
-df['label'] = labels
 
-ethnicity_train_raw = fairCV['Profiles Train'][:, 0]
-print("Unique ethnicity values found:", np.unique(ethnicity_train_raw))
-gender_train = fairCV['Profiles Train'][:, 1]
-ethnicity_test_raw = fairCV['Profiles Test'][:, 0]
-gender_test = fairCV['Profiles Test'][:, 1]
+df_train['label'] = y_train
+df_test['label'] = y_test
+df_train['group_id'] = group_ids_train
+df_test['group_id'] = group_ids_test
 
-features = ds.squeeze()  # shape: (n_samples, n_features)
-df = pd.DataFrame(features)
-df.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
-              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
-                'language_prof3']
-
-dt = pd.DataFrame(dt)
-dt.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
-              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
-                'language_prof3']
-
-
+'''
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
-df = df.assign(labels = fairCV['Blind Labels Train'])
 dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
 dt = dt.assign(labels = fairCV['Blind Labels Test'])
 
@@ -75,53 +71,35 @@ scaledData.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
                 'language_prof3', 'group_id', 'label']
 
+# Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
+#ethnicity_map = {0: 0, 1: 1, 3: 2}
+#ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
+#ethnicity_test = np.vectorize(ethnicity_map.get)(ethnicity_test_raw)
+#group_ids_train = gender_train.astype(int) * 3 + ethnicity_train
+#group_ids_test = gender_test.astype(int) * 3 + ethnicity_test
+
 dy = np.array(dy).reshape(-1,1)
 dy_test = np.array(dy_test).reshape(-1,1)
+# Define privileged/unprivileged groups
+privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
+unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
 
-train_features = {"tabular_features": ds}
-val_features = {"tabular_features": ds_test}
 
-aif_data = StructuredDataset(
-    df=scaledData,
+aif_data_train = StructuredDataset(
+    df=df_train,
     label_names=['label'],
-    protected_attribute_names=['group_id']
+    protected_attribute_names=['ethnicity', 'gender']
 )
 
+aif_data_test = StructuredDataset(
+    df=df_test,
+    label_names=['label'],
+    protected_attribute_names=['ethnicity', 'gender']
+)
 
-for i in range(0,5):
-  print(f"{ds[i]} label: {dy[i]}")
+for i in range(5):
+    print(f"{X_train[i]} label: {y_train[i]}")
 
-# Create a model
-inputs = {
-    "float_features": tf.keras.Input(shape=(None, 12), dtype='float32')
-}
-norm_inputs = [tf.keras.layers.BatchNormalization()(x) for x in inputs.values()]
-x = tf.concat(norm_inputs, axis=-1)
-for layer_width in [128, 64, 32]:
-  x = tf.keras.layers.Dense(units=layer_width)(x)
-  x = tf.keras.layers.Activation(activation=tf.nn.relu)(x)
-scores = tf.squeeze(tf.keras.layers.Dense(units=1)(x), axis=-1)
-
-# Compile and train
-model = tf.keras.Model(inputs=inputs, outputs=scores)
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
-    loss=tfr.keras.losses.MeanSquaredLoss(),
-    metrics=tfr.keras.metrics.get("ndcg", topn=5, name="NDCG@5"))
-model.fit(ds, dy, epochs=3)
-
-yhat = model.predict(ds_test)
-acc = 0 
-all = 0
-for i in range(len(yhat)): 
-  if abs(yhat[i] - dy_test[i]) < 0.002 : 
-    acc +=1
-  all +=1
-
-print(f"accuracy: {100*(acc/all)}%")
-
-
-print("PREPROCESSING DONE")
 
 ''' fairness models'''
 # Inputs: shape [batch_size, 1, 12] after reshaping
@@ -141,28 +119,34 @@ x = tf.keras.layers.GlobalAveragePooling1D()(x)
 x = tf.keras.layers.Dense(1)(x)
 
 '''
+# Define base loss (e.g., pairwise or listwise)
+base_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS)
+
 # Final model
 model = tf.keras.Model(inputs=inputs, outputs=x)
 
 ranking_model = tfr.keras.model.create_keras_model(
-    #input creator not in docs 
     input_creator=lambda: {"float_features": tf.keras.Input(shape=(1, 12))},
-    #scoring fn not in docs 
     scoring_function=model,
-    #it wants a network and optimizer from us 
     loss=tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS),
     metrics=[tfr.keras.metrics.get(tfr.keras.metrics.RankingMetricKey.NDCG)],
 )
 
-train_dataset = tf.data.Dataset.from_tensor_slices((ds, dy, group_ids_train))
+train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, group_ids_train))
 train_dataset = train_dataset.shuffle(buffer_size=1024).batch(32)
 
-#MAKE SURE!!!! group_ids is a flat vector!!!!!
-'''3!= 6 intersectional groups'''
-num_ethnicities = 3  # G1, G2, G3 (after mapping)
-group_ids = df['gender'] * num_ethnicities + ethnicity_norm
-group_ids_train = fairCV['Group IDs Train'] 
-group_ids_test = fairCV['Group IDs Test']
+val_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test, group_ids_test)).batch(32)
+
+def format_input(x, y, group_id):
+    return {"tabular_features": x}, y, group_id
+
+train_dataset = train_dataset.map(format_input)
+val_dataset = val_dataset.map(format_input)
+
+
+
+print("PREPROCESSING DONE")
+
 
 '''
 
@@ -173,7 +157,7 @@ GERRYFAIR AND DIFFERENTIAL FAIRNESS
 '''
 
 class FairnessAwareRankingLoss(tf.keras.losses.Loss):
-    def __init__(self, base_loss, lambda_df=1.0, epsilon_target=0.0, num_groups=8, name="fairness_aware_loss"):
+    def __init__(self, base_loss, lambda_df=1.0, epsilon_target=0.2, num_groups=6, name="fairness_aware_loss"):
         super().__init__(name=name)
         self.base_loss = base_loss  
         self.lambda_df = lambda_df
@@ -228,14 +212,32 @@ class FairnessAwareRankingLoss(tf.keras.losses.Loss):
         fairness_penalty = self.fairness_loss(prob_positive_counts, total_counts)
         return base + self.lambda_df * fairness_penalty
 
-# Define base loss (e.g., pairwise or listwise)
-base_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS)
 
+
+from scipy.special import expit  
 from aif360.algorithms.inprocessing import GerryFairClassifier
+from sklearn.linear_model import LinearRegression
+clf = GerryFairClassifier(predictor=LinearRegression(),C=100, gamma=0.01, fairness_def='FP', printflag=False)
 
-clf = GerryFairClassifier(C=100, gamma=0.005, fairness_def='FP', printflag=False)
-clf.fit(aif_data)
-gerry_probs = clf.predict(aif_data)
+binary_labels = (aif_data_train.labels.flatten()>0.5).astype(int)
+aif_data_train.labels=binary_labels.reshape(-1, 1)
+aif_data_test.labels = (aif_data_test.labels.flatten() > 0.5).astype(int).reshape(-1, 1)
+print("Training features shape:", aif_data_train.features.shape)
+print("Training labels shape:", aif_data_train.labels.shape)
+print("Unique labels:", np.unique(aif_data_train.labels))
+
+# Sanity check: are all feature rows valid?
+print("Any NaNs in features?", np.isnan(aif_data_train.features).any())
+print("Any NaNs in labels?", np.isnan(aif_data_train.labels).any())
+print("Label distribution:", np.bincount(aif_data_train.labels.flatten().astype(int)))
+
+clf.fit(aif_data_train)
+
+preds_dataset = clf.predict(aif_data_test)
+gerry_preds=preds_dataset.labels.flatten()
+gerry_probs = preds_dataset.scores.flatten()# for post-processing and calibration
+y_true = aif_data_test.labels.flatten()
+group_ids = aif_data_test.protected_attributes.dot([10, 1])  # ethnicity * 10 + gender
 
 def compute_ece(y_true, y_probs, n_bins=10):
     """Compute Expected Calibration Error (ECE)"""
@@ -275,43 +277,24 @@ Calibration Post Training
 
 '''
 import matplotlib.pyplot as plt
+
 from sklearn.calibration import calibration_curve
 
-class CalibrationPlotCallback(tf.keras.callbacks.Callback):
-    def __init__(self, x_val, y_val, group_ids=None, n_bins=10):
-        super().__init__()
-        self.x_val = x_val
-        self.y_val = y_val
-        self.group_ids = group_ids
-        self.n_bins = n_bins
+def plot_calibration_curve(y_true, y_probs, title="Calibration Curve", filename=None):
+    prob_true, prob_pred = calibration_curve(y_true, y_probs, n_bins=10, pos_label=1)
+    plt.figure()
+    plt.plot(prob_pred, prob_true, marker='o', label="Model")
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label="Perfectly calibrated")
+    plt.xlabel("Predicted Probability")
+    plt.ylabel("Empirical Accuracy")
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    if filename:
+        plt.savefig(filename)
+    plt.show()
 
-    def on_epoch_end(self, epoch, logs=None):
-        y_pred = self.model.predict(self.x_val).flatten()
-        y_true = self.y_val.flatten()
-
-        # Apply sigmoid if needed
-        from scipy.special import expit
-        y_prob = expit(y_pred)
-
-        self.plot_calibration(y_true, y_prob, epoch)
-
-        if self.group_ids is not None:
-            self.plot_subgroup_ece(y_true, y_prob, self.group_ids)
-
-    def plot_calibration(self, y_true, y_prob, epoch):
-        prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=self.n_bins)
-        plt.figure()
-        plt.plot(prob_pred, prob_true, marker='o', label='Model')
-        plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
-        plt.title(f'Calibration Curve - Epoch {epoch+1}')
-        plt.xlabel('Predicted Probability')
-        plt.ylabel('Empirical Probability')
-        plt.legend()
-        plt.grid()
-        plt.savefig(f'calibration_epoch_{epoch+1}.png')
-        plt.close()
-
-    def plot_subgroup_ece(self, y_true, y_prob, group_ids):
+def plot_subgroup_ece(self, y_true, y_prob, group_ids):
         from collections import defaultdict
         import numpy as np
 
@@ -327,15 +310,23 @@ class CalibrationPlotCallback(tf.keras.callbacks.Callback):
 
 
 def evaluate_calibration(y_true, y_probs, group_ids=None, label="Model"):
+    # Force binary labels
+    y_true = np.array(y_true).flatten()
+    if y_true.max() > 1 or y_true.min() < 0:
+        y_true = (y_true > 0.5).astype(int)
+        
+    y_probs = np.array(y_probs).flatten()
+
     ece = compute_ece(y_true, y_probs)
-    print(f"{label} Calibration Error (ECE): {ece:.4f}")
-    
+    print(f"{label} ECE: {ece:.4f}")
+
     if group_ids is not None:
-        group_ece = subgroup_ece(y_true, y_probs, group_ids)
+        group_ece = subgroup_ece(y_true, y_probs, np.array(group_ids))
         for g, e in group_ece.items():
             print(f"{label} Group {g} ECE: {e:.4f}")
-    
-    plot_calibration(y_true, y_probs, label=label)
+
+    plot_calibration_curve(y_true, y_probs, title=f"{label} Calibration Curve")
+
 
 
 def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
@@ -343,60 +334,63 @@ def subgroup_ece(y_true, y_probs, group_ids, n_bins=10):
     unique_groups = np.unique(group_ids)
     for g in unique_groups:
         mask = group_ids == g
-        ece_g = compute_ece(y_true[mask], y_probs[mask], n_bins)
-        group_ece[g] = ece_g
+        if np.sum(mask) < 10:
+            continue
+        group_ece[g] = compute_ece(y_true[mask], y_probs[mask], n_bins)
     return group_ece
 
 
 
 ranking_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS)
+ranking_metric = tfr.keras.metrics.get("ndcg",topn=5)
 #Training loops
 fair_loss = FairnessAwareRankingLoss(
     base_loss=base_loss_fn,
     lambda_df=1.0,
     epsilon_target=0.2,
-    num_groups=8
+    num_groups=6
+)
+model.compile(
+    optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.01),
+    loss=fair_loss
+)
+model.fit(
+    X_train,          # shape: [batch, 1, 12]
+    y_train,          # shape: [batch, 1]
+    sample_weight=group_ids_train,  # shape: [batch]
+    batch_size=32,
+    epochs=10,
+    validation_data=(X_test, y_test, group_ids_test)
 )
 
-λ_df = 1.0
-for batch_x, batch_y, batch_group_ids in train_dataset:
-    with tf.GradientTape() as tape:
-        preds = model(batch_x, training=True)
-        ranking_loss = ranking_loss_fn(batch_y, preds)
 
-        # Estimate group counts
-        p_counts, t_counts = compute_group_counts(preds, batch_group_ids, num_groups=num_groups)
 
-        df_penalty = fair_loss(p_counts, t_counts, epsilon_target=0.2)
-        loss = ranking_loss + λ_df * df_penalty
-
-    gradients = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
 #suppose preds is the name of the predictions of a model
 
-from scipy.special import expit  # Sigmoid function
 
-y_pred_raw = model(x)  # your TF model predictions (logits or scores)
-y_pred_probs = expit(y_pred_raw)  # convert scores to probabilities
-ece = compute_ece(dy_test, y_pred_probs)
-print("Calibration Error (ECE) - TF Ranking:", ece)
+y_logits = model.predict(X_test).flatten()
+y_probs = expit(y_logits)  # scores → probabilities in [0, 1]
 
-evaluate_calibration(dy_test, y_pred_probs, group_ids_test, label="TF-Ranking")
-evaluate_calibration(np.array(df), np.array(gerry_probs), np.array(group_ids_test), label="GerryFair")
+# Compute ECE
+ece = compute_ece(y_test.flatten(), y_probs)
+print(f"TF-Ranking CNN Model ECE: {ece:.4f}")
+
+#Subgroup ECE
+group_calibration = subgroup_ece(y_true, gerry_probs, group_ids)
+for g, e in group_calibration.items():
+    print(f"Group {g} ECE: {e:.4f}")
+print("Calibration Error (ECE) - GerryFair:", ece)
 
 
 
-model.compile(optimizer='adam', loss=fair_loss)
+evaluate_calibration(y_true, y_probs, group_ids_test, label="TF-Ranking")
+evaluate_calibration(np.array(y_true), np.array(gerry_probs), np.array(group_ids), label="GerryFair")
 
-model.fit(
-    x=train_features,        # input tensor
-    y=dy,          # Ranking labels
-    sample_weight=group_ids, # Group IDs per example
-    batch_size=32,
-    epochs=10,
-    validation_data=(val_features, dy_test, group_ids_test),
-    callbacks=[CalibrationPlotCallback(val_inputs, dy_test, group_ids=group_ids_test)])
+
+yhat = model.predict(X_test).flatten()
+accuracy = np.mean(np.abs(yhat - y_test.flatten()) < 0.002) * 100
+print(f"Accuracy within 0.002 margin: {accuracy:.2f}%")
 
 
 
@@ -406,16 +400,63 @@ def total_loss_fn(y_true, y_pred, group_ids):
     return fair_loss(y_true, y_pred, sample_weight)
 
 
-ece = compute_ece(np.array(df), np.array(gerry_probs))
+ece = compute_ece(y_true, gerry_probs)
 
-group_calibration = subgroup_ece(np.array(df), np.array(preds), np.array(group_ids))
-for g, e in group_calibration.items():
-    print(f"Group {g} ECE: {e:.4f}")
-print("Calibration Error (ECE) - GerryFair:", ece)
+
 
 '''
 print("Subgroup accuracy:", metric.accuracy())
 print("Disparate Impact:", metric.disparate_impact())
 print("Equal opportunity difference:", metric.equal_opportunity_difference())
 # Access subgroup statistics'''
-clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
+#clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
+'''
+
+POST PROCESSING
+
+'''
+from multicalibration import MulticalibrationPredictor
+
+probs = expit(model.predict(X_test).flatten())     # CNN logits → probabilities
+labels = (y_test.flatten() > 0.5).astype(int)      # binary ground-truth
+group_ids = group_ids_test           
+              # 1D array of group IDs
+
+# Create Boolean masks per group
+unique_groups = np.unique(group_ids)
+subgroups = [(group_ids == g) for g in unique_groups]  # list of bool masks
+for i, mask in enumerate(subgroups):
+    print(f"Group {i} mask shape: {mask.shape}, dtype: {mask.dtype}, True count: {np.sum(mask)}")
+# Sanitize subgroups
+sanitized_subgroups = [np.array(mask, dtype=bool).flatten() for mask in subgroups]
+
+hkrr_params = {
+    'alpha': 0.05,
+    'lambda': 0.001,
+    'max_iter': 200,
+    'randomized': True,
+    'use_oracle': False,
+}
+probs = np.asarray(probs).astype(np.float32).reshape(-1)
+labels = np.asarray(labels).astype(np.int32).reshape(-1)
+
+print("Shape of probs:", probs.shape)  # should be (N,)
+print("Shape of labels:", labels.shape)  # should also be (N,)
+print("Sample probs:", probs[:5])  # Should look like: [0.73, 0.52, ...]
+print("Type of probs[0]:", type(probs[0]))  # Should be <class 'numpy.float32'>
+print("Type of probs[0:1]:", type(probs[0:1]))       # ndarray
+print("Type of probs[subgroups[0]][0]:", type(probs[subgroups[0]][0]))  # must also be scalar
+
+assert probs.ndim == 1 and labels.ndim == 1
+assert all(mask.shape == probs.shape for mask in sanitized_subgroups)
+assert all(mask.dtype == bool for mask in sanitized_subgroups)
+
+# Run HKRR Multicalibration
+mcb = MulticalibrationPredictor('HKRR')
+mcb.fit(probs, labels, sanitized_subgroups, hkrr_params)
+
+# Get post-processed calibrated probabilities
+calibrated_probs = mcb.predict(probs, subgroups)
+
+print("ECE before:", compute_ece(labels, probs))
+print("ECE after (HKRR):", compute_ece(labels, calibrated_probs))
