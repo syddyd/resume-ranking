@@ -75,18 +75,8 @@ scaledData.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_
               'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
                 'language_prof3', 'group_id', 'label']
 
-# Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
-#ethnicity_map = {0: 0, 1: 1, 3: 2}
-#ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
-#ethnicity_test = np.vectorize(ethnicity_map.get)(ethnicity_test_raw)
-#group_ids_train = gender_train.astype(int) * 3 + ethnicity_train
-#group_ids_test = gender_test.astype(int) * 3 + ethnicity_test
-
 dy = np.array(dy).reshape(-1,1)
 dy_test = np.array(dy_test).reshape(-1,1)
-# Define privileged/unprivileged groups
-privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
-unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
 
 train_features = {"tabular_features": ds}
 val_features = {"tabular_features": ds_test}
@@ -155,8 +145,11 @@ x = tf.keras.layers.Dense(1)(x)
 model = tf.keras.Model(inputs=inputs, outputs=x)
 
 ranking_model = tfr.keras.model.create_keras_model(
+    #input creator not in docs 
     input_creator=lambda: {"float_features": tf.keras.Input(shape=(1, 12))},
+    #scoring fn not in docs 
     scoring_function=model,
+    #it wants a network and optimizer from us 
     loss=tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS),
     metrics=[tfr.keras.metrics.get(tfr.keras.metrics.RankingMetricKey.NDCG)],
 )
