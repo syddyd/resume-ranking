@@ -415,8 +415,8 @@ hkrr_params = {
     'randomized': True,
     'use_oracle': False,
 }
-probs = np.asarray(probs).astype(np.float32).flatten()
-labels = np.asarray(labels).astype(np.int32).flatten()
+probs = np.asarray(probs).astype(np.float32).reshape(-1)
+labels = np.asarray(labels).astype(np.int32).reshape(-1)
 
 print("Shape of probs:", probs.shape)  # should be (N,)
 print("Shape of labels:", labels.shape)  # should also be (N,)
