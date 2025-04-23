@@ -7,6 +7,7 @@ This project investigates fairness in resume ranking systems using the FairCV da
 
 The goal is to mitigate algorithmic bias across intersectional subgroups (e.g., gender × ethnicity) while maintaining model performance.
 
+---
 ## 🎛️ Key Components
 
 - 📊**CNN Ranker**: Uses Conv1D + GlobalAveragePooling for ranking tabular features.
@@ -15,12 +16,12 @@ The goal is to mitigate algorithmic bias across intersectional subgroups (e.g., 
 -🎚️ **Multicalibration**: Post-processing method using HKRR and HJZ to improve calibration across subgroups.
 
 
-## TF-Ranking Model
+---
 
 
 ## 🗂️ Dataset
 
-
+---
 ## 🧰 Dependencies
 - Python 3.8+
 - TensorFlow 2.x
@@ -30,26 +31,64 @@ The goal is to mitigate algorithmic bias across intersectional subgroups (e.g., 
 - multicalibration
 - scikit-learn
 
-## 🔌 Installation
+---
+### ✅ 1. Clone the Repository
+```bash
+git clone https://github.com/your-username/resume-ranking.git
+cd resume-ranking
+```
 
-# Create virtual env
-python3 -m venv .venv
-source .venv/bin/activate
+### ✅ 2. Create and Activate a Virtual Environment
+```bash
+python3.9 -m venv .venv
+source .venv/bin/activate  # For Unix/macOS
+# .venv\Scripts\activate   # For Windows
+```
 
-# Install dependencies
+### ✅ 3. Install Requirements
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
+```
 
+> Additional dependencies (if not in `requirements.txt`):
+```bash
+pip install aif360 tensorflow-ranking scikit-learn matplotlib pandas
+```
 
-## 	🔑 Usage
+---
 
+## 🔄 Usage
 
+### 🧪 Run All Stages
+
+```bash
+python main.py
+```
+
+This runs the full pipeline:
+- Preprocessing of FairCV data
+- Training CNN ranker with differential fairness loss
+- Evaluation (NDCG, ECE, fairness metrics)
+- Post-processing with HKRR or HJZ multicalibration
+
+---
 ## 📈 Evaluation metrics
 - Groupwise confusion matrices
 - Calibration plots per group
 - ε-DF and γ-SF measurements
 - Fairness vs. accuracy trade-off curves
 
-#DOCUMENTATION
+---
+
+## 📌 Notes
+- Compatible with Python 3.9
+- Uses AIF360, TensorFlow Ranking, and multicalibration libraries
+- Ensure your terminal or IDE uses the correct virtual environment
+
+---
+
+# DOCUMENTATION
 
 ## 📠 Contact
 
@@ -59,3 +98,10 @@ pip install -r requirements.txt
 - [Differential Fairness](https://arxiv.org/abs/2106.09276)
 - [GerryFair](https://github.com/algofairness/gerryfair)
 - [Multicalibration (HKRR/HJZ)](https://arxiv.org/abs/1807.06209)
+
+
+
+
+
+
+
