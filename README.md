@@ -15,9 +15,6 @@ The goal is to mitigate algorithmic bias across intersectional subgroups (e.g., 
 - 🎚️**Multicalibration**: Post-processing method using HKRR and HJZ to improve calibration across subgroups.
 
 
-## TF-Ranking Model
-
-
 ## 🗂️ Dataset
 
 
@@ -49,7 +46,7 @@ pip install -r requirements.txt
 - ε-DF and γ-SF measurements
 - Fairness vs. accuracy trade-off curves
 
-#DOCUMENTATION
+# DOCUMENTATION
 
 ## 📠 Contact
 
