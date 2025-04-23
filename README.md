@@ -11,8 +11,8 @@ The goal is to mitigate algorithmic bias across intersectional subgroups (e.g., 
 
 - 📊**CNN Ranker**: Uses Conv1D + GlobalAveragePooling for ranking tabular features.
 - **Differential Fairness**: Applied as a custom loss during training over group IDs.
--📖 **GerryFairClassifier**: Enforces fairness via FP/TP-rate constraints.
--🎚️ **Multicalibration**: Post-processing method using HKRR and HJZ to improve calibration across subgroups.
+- 📖**GerryFairClassifier**: Enforces fairness via FP/TP-rate constraints.
+- 🎚️**Multicalibration**: Post-processing method using HKRR and HJZ to improve calibration across subgroups.
 
 
 ## TF-Ranking Model
