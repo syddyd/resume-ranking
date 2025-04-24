@@ -20,6 +20,8 @@ The goal is to mitigate algorithmic bias across intersectional subgroups (e.g., 
 
 
 ## 🗂️ Dataset
+[FairCV dataset](https://arxiv.org/abs/2112.01477) 
+FairCV database is a large synthetic dataset without bias created for the express purpose of conducting fairness in Algorithmic hiring research 
 
 
 ---

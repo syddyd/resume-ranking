@@ -61,12 +61,28 @@ df_test['group_id'] = group_ids_test
 '''
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
 dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
-'''
+dt = dt.assign(labels = fairCV['Blind Labels Test'])
+
+scaler = StandardScaler() 
+scaledData = scaler.fit_transform(X=df)
+scaledTestData = scaler.transform(X=dt)
+
+
+scaledData = pd.DataFrame(scaledData)
+scaledData.columns = ['ethnicity', 'gender', 'occupation', 'suitability', 'educ_attainment',
+              'prev_exp', 'reccomendation', 'availability', 'language_prof0', 'language_prof1', 'language_prof2', 
+                'language_prof3', 'group_id', 'label']
+
+# Remap ethnicity to contiguous values: 0 → 0, 1 → 1, 3 → 2
+#ethnicity_map = {0: 0, 1: 1, 3: 2}
+#ethnicity_train = np.vectorize(ethnicity_map.get)(ethnicity_train_raw)
+#ethnicity_test = np.vectorize(ethnicity_map.get)(ethnicity_test_raw)
+#group_ids_train = gender_train.astype(int) * 3 + ethnicity_train
+#group_ids_test = gender_test.astype(int) * 3 + ethnicity_test
+
+dy = np.array(dy).reshape(-1,1)
+dy_test = np.array(dy_test).reshape(-1,1)
 # Define privileged/unprivileged groups
-feature_cols = [col for col in columns if col not in ['ethnicity', 'gender']]
-scaler = StandardScaler()
-df_train[feature_cols] = scaler.fit_transform(df_train[feature_cols])
-df_test[feature_cols] = scaler.transform(df_test[feature_cols])
 privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
 unprivileged_groups = [{'ethnicity': 0, 'gender': 0},{'ethnicity': 2, 'gender': 0}]  # e.g., non-white female
 y_train_binary = (y_train >0.5).astype(int)
@@ -137,6 +153,12 @@ base_loss_fn = tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS
 # Final model
 model = tf.keras.Model(inputs=inputs, outputs=x)
 
+ranking_model = tfr.keras.model.create_keras_model(
+    input_creator=lambda: {"float_features": tf.keras.Input(shape=(1, 12))},
+    scoring_function=model,
+    loss=tfr.keras.losses.get(tfr.keras.losses.RankingLossKey.SOFTMAX_LOSS),
+    metrics=[tfr.keras.metrics.get(tfr.keras.metrics.RankingMetricKey.NDCG)],
+)
 
 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, group_ids_train))
 train_dataset = train_dataset.shuffle(buffer_size=1024).batch(32)
