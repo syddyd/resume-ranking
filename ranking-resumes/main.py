@@ -7,17 +7,25 @@ from aif360.datasets import StructuredDataset
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import resample
 from aif360.datasets import BinaryLabelDataset
+from sklearn.ensemble import GradientBoostingClassifier
+import matplotlib.pyplot as plt
 
 fairCV = np.load("./data/FairCVdb.npy", allow_pickle=True).item()
 X_train_raw = np.delete(fairCV['Profiles Train'], np.s_[12:51], axis=1)  # Remove embeddings
 X_test_raw = np.delete(fairCV['Profiles Test'], np.s_[12:51], axis=1)
 
-y_train = np.array(fairCV['Biased Labels Train (Gender)']).reshape(-1, 1)
+y_train = np.array(fairCV['Biased Labels Train (Gender)']).reshape(-1,1)
+y_train_remix = (y_train>0.37).astype(int)
 y_test = np.array(fairCV['Blind Labels Test']).reshape(-1, 1)
 
 rng = np.random.default_rng(seed=42)
-rng.shuffle(X_train_raw)
-rng.shuffle(X_test_raw)
+
+perm_train = rng.permutation(X_train_raw.shape[0])
+X_train_raw = X_train_raw[perm_train]
+y_train = y_train[perm_train]
+perm_test = rng.permutation(X_test_raw.shape[0])
+X_test_raw = X_test_raw[perm_test]
+y_test = y_test[perm_test]
 
 # === Reshape for CNN Input [batch_size, 1, 12] ===
 X_train = X_train_raw.reshape(-1, 1, 12).astype(np.float32)
@@ -28,7 +36,10 @@ print("Unique ethnicity values found:", np.unique(ethnicity_train))
 gender_train = fairCV['Profiles Train'][:, 1]
 ethnicity_test = fairCV['Profiles Test'][:, 0]
 gender_test = fairCV['Profiles Test'][:, 1]
-
+ethnicity_test = ethnicity_test[perm_test]
+gender_test = gender_test[perm_test]
+ethnicity_train = ethnicity_train[perm_train]
+gender_train = gender_train[perm_train]
 
 group_ids_train = (ethnicity_train * 10 + gender_train).astype(int)
 group_ids_test = (ethnicity_test * 10 + gender_test).astype(int)
@@ -63,14 +74,16 @@ df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
 dt = dt.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
 '''
 # Define privileged/unprivileged groups
-feature_cols = [col for col in columns if col not in ['ethnicity', 'gender']]
+feature_cols = df_train.columns.difference(['label', 'ethnicity', 'gender'])
 scaler = StandardScaler()
 df_train[feature_cols] = scaler.fit_transform(df_train[feature_cols])
 df_test[feature_cols] = scaler.transform(df_test[feature_cols])
+print("Feature means:", df_train[feature_cols].mean())
+print("Feature stds:", df_train[feature_cols].std())
 privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
 unprivileged_groups = [{'ethnicity': 0, 'gender': 0},{'ethnicity': 2, 'gender': 0}]  # e.g., non-white female
-y_train_binary = (y_train >0.5).astype(int)
-y_test_binary = (y_test>0.5).astype(int)
+y_train_binary = (y_train >0.37).astype(int).reshape(-1,1)
+y_test_binary = (y_test>0.37).astype(int).reshape(-1,1)
 df_train['label'] = y_train_binary
 df_test['label'] = y_test_binary
 df_min = df_train[df_train['label'] == 1]
@@ -80,25 +93,42 @@ print("Train label counts:", df_train['label'].value_counts())
 print(f"Minority class count: {len(df_min)}")
 print(f"Majority class count: {len(df_maj)}")
 
+#test delete 
+df_train['group_id'] = df_train['ethnicity'] * 10 + df_train['gender']
+
+# Display subgroup label distribution (normalized counts of 0 and 1)
+subgroup_distribution = df_train.groupby('group_id')['label'].value_counts(normalize=True).unstack().fillna(0)
+print("\nSubgroup label distribution (normalized):")
+print(subgroup_distribution)
+
+# Optional: show raw counts
+raw_counts = df_train.groupby('group_id')['label'].value_counts().unstack().fillna(0)
+print("\nSubgroup label raw counts:")
+print(raw_counts)
+#end of test delete
 
 if len(df_min) == 0:
     raise ValueError("No positive (label=1) samples found in training data!")
 
-df_min_upsampled = resample(
-    df_min,
-    replace=True,
-    n_samples=len(df_maj),
-    random_state=42
+# For each unique group_id (combination of ethnicity & gender), resample
+df_group_balanced = []
+for group_id in df_train['group_id'].unique():
+    group_df = df_train[df_train['group_id'] == group_id]
+    df0 = group_df[group_df['label'] == 0]
+    df1 = group_df[group_df['label'] == 1]
+    if len(df1) == 0: continue  # Skip if no positives
+    upsampled = resample(df1, replace=True, n_samples=len(df0), random_state=42)
+    df_group_balanced.append(pd.concat([df0, upsampled]))
 
-)
-df_balanced = pd.concat([df_min_upsampled, df_maj])
-df_train = df_balanced.sample(frac=1.0, random_state=42)
+df_balanced = pd.concat(df_group_balanced).sample(frac=1.0, random_state=42)
 
 aif_data_train = StructuredDataset(
-    df=df_train,
+    df=df_balanced,
     label_names=['label'],
     protected_attribute_names=['ethnicity', 'gender']
 )
+print("Train label counts(before training):", np.unique(aif_data_train.labels, return_counts=True))
+
 
 aif_data_test = StructuredDataset(
     df=df_test,
@@ -149,7 +179,7 @@ def format_input(x, y, group_id):
 train_dataset = train_dataset.map(format_input)
 val_dataset = val_dataset.map(format_input)
 
-from sklearn.linear_model import LogisticRegression
+
 
 X = aif_data_train.features
 dummy_costs_0 = np.zeros(X.shape[0])  # simulate what might be passed
@@ -164,6 +194,7 @@ except Exception as e:
     print("Error during dummy fit:", e)
 
 print("PREPROCESSING DONE")
+
 
 
 '''
@@ -235,15 +266,30 @@ class FairnessAwareRankingLoss(tf.keras.losses.Loss):
 from scipy.special import expit  
 from aif360.algorithms.inprocessing import GerryFairClassifier
 from sklearn.linear_model import LogisticRegression
-clf = GerryFairClassifier(predictor=LogisticRegression(solver="lbfgs", class_weight='balanced'),C=1.0, 
-gamma=0.02,max_iters =50,  fairness_def='FP', printflag=False)
 
-binary_labels = (aif_data_train.labels.flatten()>0.5).astype(int)
+
+#Train logistic regression manually
+
+X = aif_data_train.features
+y = aif_data_train.labels.flatten()
+
+#print("Training accuracy:", clf_test.score(X, y))
+
+print("Protected attributes shape:", aif_data_train.protected_attributes.shape)
+print("Unique groups:", np.unique(aif_data_train.protected_attributes, axis=0))
+
+#BASE MODEL IS FINE THIS IS FINE DO NOT MESSS WITH CLF_TEST  PLEASE
+
+
+
+binary_labels = (aif_data_train.labels.flatten()>0.37).astype(int)
 aif_data_train.labels=binary_labels.reshape(-1, 1)
-aif_data_test.labels = (aif_data_test.labels.flatten() > 0.5).astype(int).reshape(-1, 1)
+aif_data_test.labels = (aif_data_test.labels.flatten() > 0.37).astype(int).reshape(-1, 1)
+print("Shape of features:", aif_data_train.features.shape)
+print("Shape of labels:", aif_data_train.labels.shape)
 
 
-print("Train label counts:", np.unique(aif_data_train.labels, return_counts=True))
+print("Train label counts(justbefore):", np.unique(aif_data_train.labels, return_counts=True))
 positive_count = np.sum(df_train['label'] == 1)
 negative_count = np.sum(df_train['label'] == 0)
 print(f"Positives: {positive_count}, Negatives: {negative_count}")
@@ -251,6 +297,8 @@ print(f"Positives: {positive_count}, Negatives: {negative_count}")
 labels = aif_data_test.labels
 features = aif_data_test.features
 protected = aif_data_test.protected_attributes
+
+
 
 # Build BinaryLabelDataset
 binary_data_test = BinaryLabelDataset(
@@ -262,12 +310,136 @@ binary_data_test = BinaryLabelDataset(
     label_names=['label'],
     protected_attribute_names=['ethnicity', 'gender']
 )
+#also deleter
 
+class ProbWrapper:
+    def __init__(self, model):
+        self.model = model
+
+    def predict(self, X):
+        return self.model.predict_proba(X)[:, 1]
+
+X_p = X_train.reshape(X_train.shape[0], -1).astype(np.float32)
+Y_test = X_test.reshape(X_test.shape[0], -1).astype(np.float32)
+y_train_icky = (y_train.flatten() > 0.37).astype(int)
+y_test_bin = (y_test.flatten()>0.37).astype(int)
+
+'''
+A_p = aif_data_train.protected_attributes'''
+clf_test = GradientBoostingClassifier(n_estimators=100, learning_rate=0.05)
+from sklearn.calibration import CalibratedClassifierCV
+cal_clf = CalibratedClassifierCV(clf_test, method='sigmoid', cv=3)
+cal_clf.fit(X_p, y_train_icky)
+probs = cal_clf.predict_proba(Y_test)[:, 1]
+#initial_preds = (probs > 0.3).astype(int)
+initial_preds = (probs > 0.35).astype(int)
+wrapped_cal_clf = ProbWrapper(cal_clf)
+from sklearn.metrics import confusion_matrix
+
+for g in np.unique(group_ids_test):
+    idx = group_ids_test == g
+    cm = confusion_matrix(y_test_bin[idx], initial_preds[idx])
+    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (cm[0][0], cm[0][1], 0, 0)
+    print(f"Group {g}: FP rate = {fp / (fp + tn + 1e-6):.4f}")
+
+for g in np.unique(group_ids_test):
+    plt.hist(probs[group_ids_test == g], bins=50, alpha=0.5, label=f"Group {g}")
+plt.legend()
+plt.title("Prediction distribution by group")
+plt.show()
+plt.hist(initial_preds, bins=50)
+plt.title("Prediction probability distribution")
+plt.show()
+
+clf = GerryFairClassifier(predictor=wrapped_cal_clf,C=1.0, 
+gamma=0.06, max_iters =100,  fairness_def='FP', printflag=True)
+
+'''
+from aif360.algorithms.inprocessing.gerryfair.auditor import Auditor
+baseline_clf = LogisticRegression(solver='lbfgs', class_weight='balanced')
+baseline_clf.fit(X_p, y)
+initial_preds = baseline_clf.predict(X_p)
+auditor = Auditor(aif_data_train,'FP')  # Correct
+metric_baseline = auditor.get_baseline(y, initial_preds)
+
+# Get group violating fairness the most
+group = auditor.get_group(initial_preds, metric_baseline)
+preds_tuple = tuple(map(tuple, np.zeros_like(aif_data_train.labels)))  # or try ones
+fairness_violation, _ = auditor.audit(preds_tuple)
+'''
+
+#deletaroni
+print("Final label distribution:", np.unique(aif_data_train.labels, return_counts=True))
+print("Prediction distribution before fairness model:", np.unique(initial_preds, return_counts=True))
+
+print("Binary_data_test label values:", np.unique(binary_data_test.labels))
 clf.fit(aif_data_train)
-gerry_binary_preds = clf.predict(binary_data_test).labels.flatten()
-print("Unique prediction values:", np.unique(gerry_binary_preds))
 
-assert np.array_equal(np.unique(gerry_binary_preds), [0, 1]), "Predictions must be binary."
+#test
+predictions = clf.predict(aif_data_train).labels.flatten()
+print("Unique predictions aif_data_train:", np.unique(predictions), "should not be 0")
+preds = clf.predict(aif_data_train).labels.flatten()
+print("Train predictions aif_data_train:", np.unique(preds, return_counts=True))
+#test
+test_preds = clf.predict(binary_data_test).labels.flatten()
+print("Test predictions binary_data_test:", np.unique(test_preds, return_counts=True))
+
+
+gerry_binary_preds_dataset = clf.predict(binary_data_test)
+gerry_probs_ = gerry_binary_preds_dataset.scores.flatten()
+print("Min/max predicted scores:", gerry_probs_.min(), gerry_probs_.max())
+print("Distribution summary:", np.percentile(gerry_probs_, [0, 25, 50, 75, 100]))
+threshold = 0.37
+gerry_binary_preds = (gerry_probs_ > threshold).astype(int).reshape(-1, 1)  # Make sure it's column-shaped!
+binary_data_preds = binary_data_test.copy()
+binary_data_preds.labels = gerry_binary_preds
+
+
+assert set(np.unique(binary_data_preds.labels)) <= {0, 1}, "Predictions are not binary!"
+
+print("Unique prediction values after binary_predict with gerry_binary preds:", np.unique(binary_data_preds.labels))
+
+
+from aif360.algorithms.inprocessing.gerryfair.auditor import Auditor
+
+auditor = Auditor(dataset=binary_data_test, fairness_def='FP')
+predictions_tuple = tuple((int(p),) for p in gerry_binary_preds.flatten())
+group, fp_diff = auditor.audit(predictions_tuple)
+
+print("Auditor FP violation:", fp_diff)
+print("Violated group:", group)
+
+from sklearn.metrics import confusion_matrix
+
+def compute_fp_rates(dataset, predictions):
+    df = dataset.convert_to_dataframe()[0]
+    df['pred'] = predictions
+    protected_attrs = df[['ethnicity', 'gender']]
+    groups = protected_attrs.drop_duplicates().values
+
+    fp_rates = {}
+
+    for group in groups:
+        mask = (df['ethnicity'] == group[0]) & (df['gender'] == group[1])
+        group_df = df[mask]
+        y_true = group_df['label'].values
+        y_pred = group_df['pred'].values
+
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0,1]).ravel()
+        fp_rate = fp / (fp + tn + 1e-8)  # add epsilon to avoid divide-by-zero
+        fp_rates[tuple(group)] = fp_rate
+
+    return fp_rates
+
+
+fp_rates = compute_fp_rates(binary_data_test, gerry_binary_preds)
+for group, rate in fp_rates.items():
+    print(f"Group {group}: FP rate = {rate:.20f}")
+
+max_diff = max(fp_rates.values()) - min(fp_rates.values())
+print(f"Max FP rate disparity: {max_diff:.20f}")
+
+#assert np.array_equal(np.unique(gerry_binary_preds), [0, 1]), "Predictions must be binary."
 
 
 preds_dataset = clf.predict(aif_data_test)
@@ -275,6 +447,7 @@ gerry_preds=preds_dataset.labels.flatten()
 gerry_probs = preds_dataset.scores.flatten()# for post-processing and calibration
 y_true = aif_data_test.labels.flatten()
 group_ids = aif_data_test.protected_attributes.dot([10, 1])  # ethnicity * 10 + gender
+
 
 def compute_ece(y_true, y_probs, n_bins=10):
     """Compute Expected Calibration Error (ECE)"""
@@ -313,7 +486,7 @@ Calibration Post Training
 
 
 '''
-import matplotlib.pyplot as plt
+
 
 from sklearn.calibration import calibration_curve
 
@@ -352,7 +525,7 @@ def evaluate_calibration(y_true, y_probs, group_ids=None, label="Model"):
     # Force binary labels
     y_true = np.array(y_true).flatten()
     if y_true.max() > 1 or y_true.min() < 0:
-        y_true = (y_true > 0.5).astype(int)
+        y_true = (y_true > 0.37).astype(int)
         
     y_probs = np.array(y_probs).flatten()
 
@@ -404,7 +577,14 @@ model.fit(
     validation_data=(X_test, y_test, group_ids_test)
 )
 
+clf.fit(aif_data_train)
+preds = clf.predict(aif_data_train).labels.flatten()
 
+from aif360.algorithms.inprocessing.gerryfair.auditor import Auditor
+auditor = Auditor(aif_data_train, 'FP')
+
+baseline_fp = auditor.get_baseline(binary_data_test.labels.flatten(), gerry_preds)
+print("Baseline_fp should be:", baseline_fp)
 
 
 #suppose preds is the name of the predictions of a model
@@ -518,8 +698,7 @@ def fp_vs_fn(dataset, gamma_list, iters):
         preds = fair_model.predict(dataset).labels.flatten()
         probs = fair_model.predict(dataset)
         fp_auditor.y_input = binary_data_test.labels.flatten()
-        costs_0 = fp_auditor.compute_costs(predictions_tuple)[0]
-        print("Unique costs_0 values:", np.unique(costs_0))
+        
 
         plt.hist(probs.scores, bins=20)
         plt.title("Distribution of predicted probabilities")
@@ -548,8 +727,8 @@ def fp_vs_fn(dataset, gamma_list, iters):
     plt.savefig('gerryfair_fp_fn.png')
     plt.close()
 
-gamma_list = [0.0001, 0.0005, 0.001, 0.002, 0.003]
-pareto_iters = 10
+gamma_list = [0.01, 0.02, 0.05, 0.00001]
+pareto_iters = 100
 fp_vs_fn(binary_data_test, gamma_list, pareto_iters)
 img_fn='gerryfair_fp_fn.png'
 image = Image.open(img_fn)
@@ -562,7 +741,7 @@ from multicalibration import MulticalibrationPredictor
 
 
 probs = expit(model.predict(X_test).flatten())     # CNN logits → probabilities 
-labels = (y_test.flatten() > 0.5).astype(int)      # binary ground-truth
+labels = (y_test.flatten() > 0.37).astype(int)      # binary ground-truth
 group_ids = group_ids_test           
               # 1D array of group IDs
 
