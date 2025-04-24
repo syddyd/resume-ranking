@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 from aif360.datasets import StructuredDataset
 from sklearn.preprocessing import StandardScaler
-
-
+from sklearn.utils import resample
+from aif360.datasets import BinaryLabelDataset
 
 fairCV = np.load("./data/FairCVdb.npy", allow_pickle=True).item()
 X_train_raw = np.delete(fairCV['Profiles Train'], np.s_[12:51], axis=1)  # Remove embeddings
@@ -51,10 +51,12 @@ scaledTestData = scaler.transform(X=dt)
 # Assume ds contains features, dy are binary labels, group_ids contain race, gender, etc.
 
 
-df_train['label'] = y_train
-df_test['label'] = y_test
+
 df_train['group_id'] = group_ids_train
 df_test['group_id'] = group_ids_test
+
+
+
 
 '''
 df = df.assign(group_id = lambda x : x.ethnicity * 10 + x.gender)
@@ -66,8 +68,31 @@ scaler = StandardScaler()
 df_train[feature_cols] = scaler.fit_transform(df_train[feature_cols])
 df_test[feature_cols] = scaler.transform(df_test[feature_cols])
 privileged_groups = [{'ethnicity': 1, 'gender': 1}]  # e.g., white male
-unprivileged_groups = [{'ethnicity': 0, 'gender': 0}]  # e.g., non-white female
+unprivileged_groups = [{'ethnicity': 0, 'gender': 0},{'ethnicity': 2, 'gender': 0}]  # e.g., non-white female
+y_train_binary = (y_train >0.5).astype(int)
+y_test_binary = (y_test>0.5).astype(int)
+df_train['label'] = y_train_binary
+df_test['label'] = y_test_binary
+df_min = df_train[df_train['label'] == 1]
+df_maj = df_train[df_train['label'] == 0]
+print("Train label counts:", df_train['label'].value_counts())
 
+print(f"Minority class count: {len(df_min)}")
+print(f"Majority class count: {len(df_maj)}")
+
+
+if len(df_min) == 0:
+    raise ValueError("No positive (label=1) samples found in training data!")
+
+df_min_upsampled = resample(
+    df_min,
+    replace=True,
+    n_samples=len(df_maj),
+    random_state=42
+
+)
+df_balanced = pd.concat([df_min_upsampled, df_maj])
+df_train = df_balanced.sample(frac=1.0, random_state=42)
 
 aif_data_train = StructuredDataset(
     df=df_train,
@@ -80,6 +105,9 @@ aif_data_test = StructuredDataset(
     label_names=['label'],
     protected_attribute_names=['ethnicity', 'gender']
 )
+
+print(df_train.groupby(['ethnicity', 'gender'])['label'].value_counts())
+
 
 for i in range(5):
     print(f"{X_train[i]} label: {y_train[i]}")
@@ -121,7 +149,19 @@ def format_input(x, y, group_id):
 train_dataset = train_dataset.map(format_input)
 val_dataset = val_dataset.map(format_input)
 
+from sklearn.linear_model import LogisticRegression
 
+X = aif_data_train.features
+dummy_costs_0 = np.zeros(X.shape[0])  # simulate what might be passed
+
+print("Unique in dummy_costs_0:", np.unique(dummy_costs_0))
+print("Shape of X:", X.shape)
+
+# Test if a LogisticRegression can even be fit
+try:
+    LogisticRegression().fit(X, dummy_costs_0)
+except Exception as e:
+    print("Error during dummy fit:", e)
 
 print("PREPROCESSING DONE")
 
@@ -194,22 +234,41 @@ class FairnessAwareRankingLoss(tf.keras.losses.Loss):
 
 from scipy.special import expit  
 from aif360.algorithms.inprocessing import GerryFairClassifier
-from sklearn.linear_model import LinearRegression
-clf = GerryFairClassifier(predictor=LinearRegression(),C=100, gamma=0.01, fairness_def='FP', printflag=False)
+from sklearn.linear_model import LogisticRegression
+clf = GerryFairClassifier(predictor=LogisticRegression(solver="lbfgs", class_weight='balanced'),C=1.0, 
+                          gamma=0.02,max_iters =50,  fairness_def='FP', printflag=False)
 
 binary_labels = (aif_data_train.labels.flatten()>0.5).astype(int)
 aif_data_train.labels=binary_labels.reshape(-1, 1)
 aif_data_test.labels = (aif_data_test.labels.flatten() > 0.5).astype(int).reshape(-1, 1)
-print("Training features shape:", aif_data_train.features.shape)
-print("Training labels shape:", aif_data_train.labels.shape)
-print("Unique labels:", np.unique(aif_data_train.labels))
 
-# Sanity check: are all feature rows valid?
-print("Any NaNs in features?", np.isnan(aif_data_train.features).any())
-print("Any NaNs in labels?", np.isnan(aif_data_train.labels).any())
-print("Label distribution:", np.bincount(aif_data_train.labels.flatten().astype(int)))
+
+print("Train label counts:", np.unique(aif_data_train.labels, return_counts=True))
+positive_count = np.sum(df_train['label'] == 1)
+negative_count = np.sum(df_train['label'] == 0)
+print(f"Positives: {positive_count}, Negatives: {negative_count}")
+
+labels = aif_data_test.labels
+features = aif_data_test.features
+protected = aif_data_test.protected_attributes
+
+# Build BinaryLabelDataset
+binary_data_test = BinaryLabelDataset(
+    favorable_label=1.0,
+    unfavorable_label=0.0,
+    df=pd.DataFrame(np.hstack([features, labels, protected]), 
+                    columns=[f'feat_{i}' for i in range(features.shape[1])] + 
+                            ['label'] + ['ethnicity', 'gender']),
+    label_names=['label'],
+    protected_attribute_names=['ethnicity', 'gender']
+)
 
 clf.fit(aif_data_train)
+gerry_binary_preds = clf.predict(binary_data_test).labels.flatten()
+print("Unique prediction values:", np.unique(gerry_binary_preds))
+
+assert np.array_equal(np.unique(gerry_binary_preds), [0, 1]), "Predictions must be binary."
+
 
 preds_dataset = clf.predict(aif_data_test)
 gerry_preds=preds_dataset.labels.flatten()
@@ -259,7 +318,9 @@ import matplotlib.pyplot as plt
 from sklearn.calibration import calibration_curve
 
 def plot_calibration_curve(y_true, y_probs, title="Calibration Curve", filename=None):
-    prob_true, prob_pred = calibration_curve(y_true, y_probs, n_bins=10, pos_label=1)
+    y_true = np.asarray(y_true).flatten()
+    y_probs = np.asarray(y_probs).flatten()
+    prob_true, prob_pred = calibration_curve(y_true, y_probs, n_bins=50, pos_label=1)
     plt.figure()
     plt.plot(prob_pred, prob_true, marker='o', label="Model")
     plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label="Perfectly calibrated")
@@ -330,14 +391,16 @@ fair_loss = FairnessAwareRankingLoss(
 )
 model.compile(
     optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.01),
-    loss=fair_loss
+    loss=fair_loss,
+    metrics=[],
+    weighted_metrics=[tfr.keras.metrics.get("ndcg",topn=5)]
 )
 model.fit(
     X_train,          # shape: [batch, 1, 12]
     y_train,          # shape: [batch, 1]
     sample_weight=group_ids_train,  # shape: [batch]
     batch_size=32,
-    epochs=10,
+    epochs=50,
     validation_data=(X_test, y_test, group_ids_test)
 )
 
@@ -380,22 +443,125 @@ def total_loss_fn(y_true, y_pred, group_ids):
 
 ece = compute_ece(y_true, gerry_probs)
 
+from aif360.metrics import ClassificationMetric, BinaryLabelDatasetMetric
 
+from aif360.algorithms.inprocessing.gerryfair.auditor import *
+from PIL import Image
+labels = aif_data_test.labels
+features = aif_data_test.features
+protected = aif_data_test.protected_attributes
 
-'''
+# Build BinaryLabelDataset
+binary_data_test = BinaryLabelDataset(
+    favorable_label=1.0,
+    unfavorable_label=0.0,
+    df=pd.DataFrame(np.hstack([features, labels, protected]), 
+                    columns=[f'feat_{i}' for i in range(features.shape[1])] + 
+                            ['label'] + ['ethnicity', 'gender']),
+    label_names=['label'],
+    protected_attribute_names=['ethnicity', 'gender']
+)
+binary_data_preds = binary_data_test.copy()
+binary_data_preds.labels = gerry_preds.reshape(-1, 1)
+
+metric = ClassificationMetric(
+    binary_data_test,
+    binary_data_preds,
+    privileged_groups=[{'ethnicity': 1,'gender': 1}],
+    unprivileged_groups=[{'ethnicity': 0}, {'gender': 0}, {'ethnicity': 2, 'gender': 0} ]
+)
+
+  # ethnicity * 10 + gender
+
+# Evaluate subgroup accuracy manually
+from collections import defaultdict
+
+subgroup_acc = defaultdict(list)
+for gid, y_hat, y in zip(group_ids, gerry_preds, y_true):
+    subgroup_acc[gid].append(int(y_hat == y))
+
+for gid in sorted(subgroup_acc):
+    acc = np.mean(subgroup_acc[gid])
+    print(f"Subgroup {gid} Accuracy: {acc:.4f}")
+
 print("Subgroup accuracy:", metric.accuracy())
 print("Disparate Impact:", metric.disparate_impact())
 print("Equal opportunity difference:", metric.equal_opportunity_difference())
-# Access subgroup statistics'''
-#clf.classifier.subgroup_performance  # dictionary of group stats (accuracy, FP rate, etc.)
-'''
+# Access subgroup statistics
 
+
+clf.heatmapflag = True
+clf.heatmap_path = 'heatmap'
+clf.generate_heatmap(binary_data_test, binary_data_test.labels)
+img_filename ='{}.png'.format(clf.heatmap_path)
+image_ = Image.open(img_filename)
+image_.show()
+
+#blackbox auditing
+gerry_metric = BinaryLabelDatasetMetric(binary_data_test)
+gamma_disparity = gerry_metric.rich_subgroup(tuple(binary_data_test.labels.flatten()),'FP')
+print(gamma_disparity)
+#FPR VS FNR data analysis
+def fp_vs_fn(dataset, gamma_list, iters):
+    fp_auditor = Auditor(dataset, 'FP')
+    fn_auditor = Auditor(dataset, 'FN')
+    predictions_tuple = tuple(map(tuple, gerry_preds.reshape(-1, 1)))
+    baseline_fp = fp_auditor.get_baseline(binary_data_test.labels.flatten(), gerry_preds)
+    group_fp = fp_auditor.get_group(predictions_tuple, baseline_fp)
+    fp_violations = []
+    fn_violations = []
+    for g in gamma_list:
+        print('gamma: {} '.format(g), end =" ")
+        fair_model = GerryFairClassifier(C=1.0, printflag=False, gamma=g, max_iters=iters)
+        fair_model.gamma=g
+        fair_model.fit(dataset)
+        preds = fair_model.predict(dataset).labels.flatten()
+        probs = fair_model.predict(dataset)
+        fp_auditor.y_input = binary_data_test.labels.flatten()
+        costs_0 = fp_auditor.compute_costs(predictions_tuple)[0]
+        print("Unique costs_0 values:", np.unique(costs_0))
+
+        plt.hist(probs.scores, bins=20)
+        plt.title("Distribution of predicted probabilities")
+        plt.show()
+
+        print("Unique predicted labels:", np.unique(preds))
+        print("Protected attributes shape:", dataset.protected_attributes.shape)
+        print("Unique groups:", np.unique(dataset.protected_attributes, axis=0))
+        print("Label distribution:", np.unique(dataset.labels, return_counts=True))
+
+
+
+        predictions = fair_model.predict(dataset).labels.flatten().astype(int)
+        _, fp_diff = fp_auditor.audit(predictions)
+        _, fn_diff = fn_auditor.audit(predictions)
+        fp_violations.append(fp_diff)
+        fn_violations.append(fn_diff)
+    print("FP violations:", fp_violations)
+    print("FN violations:", fn_violations)
+
+    plt.plot(fp_violations, fn_violations, label='adult')
+    plt.xlabel('False Positive Disparity')
+    plt.ylabel('False Negative Disparity')
+    plt.legend()
+    plt.title('FP vs FN Unfairness')
+    plt.savefig('gerryfair_fp_fn.png')
+    plt.close()
+
+gamma_list = [0.0001, 0.0005, 0.001, 0.002, 0.003]
+pareto_iters = 10
+fp_vs_fn(binary_data_test, gamma_list, pareto_iters)
+img_fn='gerryfair_fp_fn.png'
+image = Image.open(img_fn)
+image.show()
+''''
 POST PROCESSING
 
 '''
 from multicalibration import MulticalibrationPredictor
 
-probs = expit(model.predict(X_test).flatten())     # CNN logits → probabilities
+
+probs = expit(model.predict(X_test).flatten())     # CNN logits → probabilities 
 labels = (y_test.flatten() > 0.5).astype(int)      # binary ground-truth
 group_ids = group_ids_test           
               # 1D array of group IDs
@@ -415,6 +581,16 @@ hkrr_params = {
     'randomized': True,
     'use_oracle': False,
 }
+
+hjz_params = {
+        'iterations': 200,
+        'algorithm': 'OptimisticHedge',
+        'other_algorithm': 'OptimisticHedge',
+        'lr': 0.995,
+        'other_lr': 0.995,
+        'n_bins': 10,
+    }
+
 probs = np.asarray(probs).astype(np.float32).reshape(-1)
 labels = np.asarray(labels).astype(np.int32).reshape(-1)
 
@@ -432,9 +608,29 @@ assert all(mask.dtype == bool for mask in sanitized_subgroups)
 # Run HKRR Multicalibration
 mcb = MulticalibrationPredictor('HKRR')
 mcb.fit(probs, labels, sanitized_subgroups, hkrr_params)
+mcb_gerry = MulticalibrationPredictor('HKRR')
+mcb_gerry.fit(gerry_probs,y_true,sanitized_subgroups,hkrr_params)
+
+# Run HJZ Multicalibration 
+
+hjz_preds = MulticalibrationPredictor('HJZ')
+hjz_preds.fit(probs, labels,sanitized_subgroups,hjz_params)
+hjz_gerry = MulticalibrationPredictor('HJZ')
+hjz_gerry.fit(gerry_probs, y_true, sanitized_subgroups, hjz_params)
+
 
 # Get post-processed calibrated probabilities
 calibrated_probs = mcb.predict(probs, subgroups)
+calibrated_probs_gerry = mcb_gerry.predict(gerry_probs, sanitized_subgroups)
+hjz_calibrated_probs = hjz_preds.predict(probs, sanitized_subgroups)
+hjz_calibrated_gerryprobs= hjz_preds.predict(gerry_probs,sanitized_subgroups)
 
-print("ECE before:", compute_ece(labels, probs))
-print("ECE after (HKRR):", compute_ece(labels, calibrated_probs))
+print("TF ECE before:", compute_ece(labels, probs))
+print(" TF ECE after (HKRR):", compute_ece(labels, calibrated_probs))
+print("Gerry ECE before:", compute_ece(y_true, gerry_probs))
+print("Gerry ECE after (HKRR):", compute_ece(y_true, calibrated_probs_gerry))
+
+print("TF ECE before:", compute_ece(labels, probs))
+print(" TF ECE after (HJZ):", compute_ece(labels, hjz_calibrated_probs))
+print("Gerry ECE before:", compute_ece(y_true, gerry_probs))
+print("Gerry ECE after (HJZ):", compute_ece(y_true,hjz_calibrated_gerryprobs))

@@ -21,6 +21,7 @@ The goal is to mitigate algorithmic bias across intersectional subgroups (e.g., 
 
 ## 🗂️ Dataset
 
+
 ---
 ## 🧰 Dependencies
 - Python 3.8+
@@ -91,13 +92,14 @@ This runs the full pipeline:
 # DOCUMENTATION
 
 ## 📠 Contact
-
+Ananya Krishnakumar - ananya.krishnakumar@mail.mcgill.ca / ananya.krishnakv@gmail.com
+Sydney Dacks - hannah.dacks@mail.mcgill.ca / sydney.dacks@gmail.com 
 
 ## 💐 Citations
-- [FairCV dataset](https://arxiv.org/abs/2112.01477)
-- [Differential Fairness](https://arxiv.org/abs/2106.09276)
-- [GerryFair](https://github.com/algofairness/gerryfair)
-- [Multicalibration (HKRR/HJZ)](https://arxiv.org/abs/1807.06209)
+- [FairCV dataset](https://github.com/BiDAlab/FairCVtest)
+- [Differential Fairness](https://www.mdpi.com/1099-4300/25/4/660)
+- [GerryFair](https://github.com/Trusted-AI/AIF360/tree/main/aif360/algorithms/inprocessing/gerryfair)
+- [Multicalibration (HKRR/HJZ)](https://github.com/sid-devic/multicalibration)
 
 
 
