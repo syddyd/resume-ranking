@@ -1,0 +1,431 @@
+Unique ethnicity values found: [0. 1. 2.]
+Feature means: availability      -4.270658e-16
+educ_attainment    1.623701e-16
+group_id           6.337523e-17
+language_prof0    -8.881784e-18
+language_prof1    -1.332268e-17
+language_prof2    -3.293662e-17
+language_prof3     2.220446e-17
+occupation         4.218847e-17
+prev_exp          -4.921989e-16
+recommendation    -8.141636e-18
+suitability       -1.443290e-16
+dtype: float64
+Feature stds: availability       1.000026
+educ_attainment    1.000026
+group_id           1.000026
+language_prof0     1.000026
+language_prof1     1.000026
+language_prof2     1.000026
+language_prof3     1.000026
+occupation         1.000026
+prev_exp           1.000026
+recommendation     1.000026
+suitability        1.000026
+dtype: float64
+Train label counts: label
+0    9847
+1    9353
+Name: count, dtype: int64
+Minority class count: 9353
+Majority class count: 9847
+
+Subgroup label distribution (normalized):
+label            0         1
+group_id                    
+0.0       0.355161  0.644839
+1.0       0.646654  0.353346
+10.0      0.383985  0.616015
+11.0      0.656790  0.343210
+20.0      0.369975  0.630025
+21.0      0.661457  0.338543
+
+Subgroup label raw counts:
+label        0     1
+group_id            
+0.0       1139  2068
+1.0       2068  1130
+10.0      1218  1954
+11.0      2128  1112
+20.0      1178  2006
+21.0      2116  1083
+Train label counts(before training): (array([0., 1.]), array([9847, 9847]))
+ethnicity  gender  label
+0.0        0.0     1        2068
+                   0        1139
+           1.0     0        2068
+                   1        1130
+1.0        0.0     1        1954
+                   0        1218
+           1.0     0        2128
+                   1        1112
+2.0        0.0     1        2006
+                   0        1178
+           1.0     0        2116
+                   1        1083
+Name: count, dtype: int64
+[[ 2.         1.         8.         0.5        0.2        0.4
+   0.         1.         0.6        0.6        1.        -0.2878781]] label: [0.28835141]
+[[2.         0.         9.         0.5        0.4        0.2
+  1.         0.6        0.8        0.2        1.         0.16928096]] label: [0.51032749]
+[[2.         0.         0.         0.75       0.6        0.4
+  0.         1.         0.2        0.         1.         0.20589441]] label: [0.42040281]
+[[0.         1.         7.         1.         0.4        0.6
+  0.         1.         0.4        0.         0.4        0.15228093]] label: [0.31038412]
+[[1.         0.         5.         0.25       0.2        0.4
+  0.         1.         0.4        0.4        0.6        0.20888329]] label: [0.24628337]
+Unique in dummy_costs_0: [0.]
+Shape of X: (19694, 13)
+PREPROCESSING DONE
+/Users/test/Desktop/COMP 598/resume-ranking/.venv/lib/python3.9/site-packages/inFairness/utils/ndcg.py:37: FutureWarning: We've integrated functorch into PyTorch. As the final step of the integration, `functorch.vmap` is deprecated as of PyTorch 2.0 and will be deleted in a future version of PyTorch >= 2.3. Please use `torch.vmap` instead; see the PyTorch 2.0 release notes and/or the `torch.func` migration guide for more details https://pytorch.org/docs/main/func.migrating.html
+  vect_normalized_discounted_cumulative_gain = vmap(
+/Users/test/Desktop/COMP 598/resume-ranking/.venv/lib/python3.9/site-packages/inFairness/utils/ndcg.py:48: FutureWarning: We've integrated functorch into PyTorch. As the final step of the integration, `functorch.vmap` is deprecated as of PyTorch 2.0 and will be deleted in a future version of PyTorch >= 2.3. Please use `torch.vmap` instead; see the PyTorch 2.0 release notes and/or the `torch.func` migration guide for more details https://pytorch.org/docs/main/func.migrating.html
+  monte_carlo_vect_ndcg = vmap(vect_normalized_discounted_cumulative_gain, in_dims=(0,))
+Protected attributes shape: (19694, 2)
+Unique groups: [[0. 0.]
+ [0. 1.]
+ [1. 0.]
+ [1. 1.]
+ [2. 0.]
+ [2. 1.]]
+Train label counts(justbefore): (array([0., 1.]), array([9847, 9847]))
+Positives: 9353, Negatives: 9847
+Intersectional Group Fairness Metric
+Group (0.0, 0.0): FP Rate = 0.1551
+Group (0.0, 0.0): FN Rate = 0.0327
+Group (0.0, 1.0): FP Rate = 0.0074
+Group (0.0, 1.0): FN Rate = 0.4057
+Group (1.0, 0.0): FP Rate = 0.1688
+Group (1.0, 0.0): FN Rate = 0.0253
+Group (1.0, 1.0): FP Rate = 0.0141
+Group (1.0, 1.0): FN Rate = 0.4444
+Group (2.0, 0.0): FP Rate = 0.1358
+Group (2.0, 0.0): FN Rate = 0.0350
+Group (2.0, 1.0): FP Rate = 0.0095
+Group (2.0, 1.0): FN Rate = 0.3574
+2025-04-24 21:20:27.082 Python[32535:48195755] +[IMKClient subclass]: chose IMKClient_Modern
+2025-04-24 21:20:27.082 Python[32535:48195755] +[IMKInputSession subclass]: chose IMKInputSession_Modern
+Group 0: FP rate = 0.1551
+Group 1: FP rate = 0.0074
+Group 10: FP rate = 0.1688
+Group 11: FP rate = 0.0141
+Group 20: FP rate = 0.1358
+Group 21: FP rate = 0.0095
+Calibration Curve by Subgroup
+AUC-ROC per Group
+Group 0: AUC-ROC = 0.983
+Group 1: AUC-ROC = 0.970
+Group 10: AUC-ROC = 0.983
+Group 11: AUC-ROC = 0.964
+Group 20: AUC-ROC = 0.982
+Group 21: AUC-ROC = 0.979
+Final label distribution: (array([0., 1.]), array([9847, 9847]))
+Prediction distribution before fairness model: (array([0, 1]), array([2288, 2512]))
+Binary_data_test label values: [0. 1.]
+Warning: costs_0 is constant. Skipping fit.
+iteration: 1, error: 0.5, fairness violation: 0.0, violated group size: 0.0
+Warning: costs_0 is constant. Skipping fit.
+iteration: 2, error: 0.5, fairness violation: 0.0, violated group size: 0.0
+Warning: costs_0 is constant. Skipping fit.
+iteration: 3, error: 0.5, fairness violation: 0.0, violated group size: 0.0
+Warning: costs_0 is constant. Skipping fit.
+iteration: 4, error: 0.5, fairness violation: 0.0, violated group size: 0.0
+Warning: costs_0 is constant. Skipping fit.
+iteration: 5, error: 0.5, fairness violation: 0.0, violated group size: 0.0
+Unique in costs_0: [0.]
+Unique in costs_1: [-5.07768864e-05  5.07768864e-05]
+Unique predictions aif_data_train: [0] should not be 0
+Train predictions aif_data_train: (array([0]), array([19694]))
+Test predictions binary_data_test: (array([0]), array([4800]))
+Min/max predicted scores: 0.0 1.0
+Distribution summary: [0. 0. 1. 1. 1.]
+Unique prediction values after binary_predict with gerry_binary preds: [0 1]
+Auditor FP violation: 0.0
+Violated group: [[0 0 0 ... 0 0 0]
+ [0 0 0 ... 0 0 0]
+ [0 0 0 ... 0 0 0]
+ ...
+ [0 0 0 ... 0 0 0]
+ [0 0 0 ... 0 0 0]
+ [0 0 0 ... 0 0 0]]
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-5.07768864e-05  5.07768864e-05]
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-5.07768864e-05  5.07768864e-05]
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-5.07768864e-05  5.07768864e-05]
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-5.07768864e-05  5.07768864e-05]
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-5.07768864e-05  5.07768864e-05]
+Group (1.0, 1.0): FP rate = 0.00000000000000000000
+Group (2.0, 1.0): FP rate = 0.00000000000000000000
+Group (1.0, 0.0): FP rate = 0.00000000000000000000
+Group (0.0, 1.0): FP rate = 0.00000000000000000000
+Group (0.0, 0.0): FP rate = 0.00000000000000000000
+Group (2.0, 0.0): FP rate = 0.00000000000000000000
+Max FP rate disparity: 0.00000000000000000000
+Epoch 1/50
+600/600 [==============================] - 1s 692us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 2/50
+600/600 [==============================] - 0s 653us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 3/50
+600/600 [==============================] - 0s 473us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 4/50
+600/600 [==============================] - 0s 470us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 5/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9989 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 6/50
+600/600 [==============================] - 0s 471us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 7/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 8/50
+600/600 [==============================] - 0s 471us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 9/50
+600/600 [==============================] - 0s 467us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 10/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 11/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 12/50
+600/600 [==============================] - 0s 467us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 13/50
+600/600 [==============================] - 0s 569us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 14/50
+600/600 [==============================] - 0s 472us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 15/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 16/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 17/50
+600/600 [==============================] - 0s 470us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 18/50
+600/600 [==============================] - 0s 467us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 19/50
+600/600 [==============================] - 0s 466us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 20/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 21/50
+600/600 [==============================] - 0s 462us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 22/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 23/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 24/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9989 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 25/50
+600/600 [==============================] - 0s 472us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 26/50
+600/600 [==============================] - 0s 474us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 27/50
+600/600 [==============================] - 0s 470us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 28/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9989 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 29/50
+600/600 [==============================] - 0s 470us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 30/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 31/50
+600/600 [==============================] - 0s 518us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 32/50
+600/600 [==============================] - 1s 843us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 33/50
+600/600 [==============================] - 0s 476us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 34/50
+600/600 [==============================] - 0s 470us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 35/50
+600/600 [==============================] - 0s 730us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 36/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 37/50
+600/600 [==============================] - 0s 468us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 38/50
+600/600 [==============================] - 0s 597us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 39/50
+600/600 [==============================] - 0s 512us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9989 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 40/50
+600/600 [==============================] - 0s 495us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 41/50
+600/600 [==============================] - 0s 472us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 42/50
+600/600 [==============================] - 0s 483us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 43/50
+600/600 [==============================] - 0s 471us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9989 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 44/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 45/50
+600/600 [==============================] - 0s 470us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 46/50
+600/600 [==============================] - 0s 470us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 47/50
+600/600 [==============================] - 0s 486us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 48/50
+600/600 [==============================] - 0s 504us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 49/50
+600/600 [==============================] - 0s 469us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Epoch 50/50
+600/600 [==============================] - 0s 576us/step - loss: 0.0000e+00 - ndcg_metric_1: 0.9988 - val_loss: 0.0000e+00 - val_ndcg_metric_1: 1.0000
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-5.07768864e-05  5.07768864e-05]
+Baseline_fp should be: 0.0
+150/150 [==============================] - 0s 250us/step
+TF-Ranking CNN Model ECE: 0.0409
+Group 0.0 ECE: 0.0000
+Group 1.0 ECE: 0.0000
+Group 10.0 ECE: 0.0000
+Group 11.0 ECE: 0.0000
+Group 20.0 ECE: 0.0000
+Group 21.0 ECE: 0.0000
+Calibration Error (ECE) - GerryFair: 0.04086664746445609
+TF-Ranking ECE: 0.2025
+TF-Ranking Group 0 ECE: 0.1873
+TF-Ranking Group 1 ECE: 0.2156
+TF-Ranking Group 10 ECE: 0.2081
+TF-Ranking Group 11 ECE: 0.1979
+TF-Ranking Group 20 ECE: 0.2224
+TF-Ranking Group 21 ECE: 0.1841
+2025-04-24 21:21:44.210 Python[32535:48195755] The class 'NSSavePanel' overrides the method identifier.  This method is implemented by class 'NSWindow'
+GerryFair ECE: 0.0000
+GerryFair Group 0.0 ECE: 0.0000
+GerryFair Group 1.0 ECE: 0.0000
+GerryFair Group 10.0 ECE: 0.0000
+GerryFair Group 11.0 ECE: 0.0000
+GerryFair Group 20.0 ECE: 0.0000
+GerryFair Group 21.0 ECE: 0.0000
+150/150 [==============================] - 0s 261us/step
+Accuracy within 0.002 margin: 0.00%
+Subgroup 0.0 Accuracy: 0.3821
+Subgroup 1.0 Accuracy: 0.3392
+Subgroup 10.0 Accuracy: 0.3792
+Subgroup 11.0 Accuracy: 0.3724
+Subgroup 20.0 Accuracy: 0.3701
+Subgroup 21.0 Accuracy: 0.3958
+Subgroup accuracy: 0.373125
+/Users/test/Desktop/COMP 598/resume-ranking/.venv/lib/python3.9/site-packages/aif360/metrics/dataset_metric.py:82: RuntimeWarning: invalid value encountered in scalar divide
+  return metric_fun(privileged=False) / metric_fun(privileged=True)
+Disparate Impact: nan
+Equal opportunity difference: 0.0
+/Users/test/Desktop/COMP 598/resume-ranking/.venv/lib/python3.9/site-packages/aif360/algorithms/inprocessing/gerryfair/heatmap.py:89: UserWarning: Attempting to set identical low and high zlims makes transformation singular; automatically expanding.
+  ax.set_zlim3d([np.min(disparity), np.max(disparity)])
+0.0
+gamma: 0.01  Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-0.00020833  0.00020833]
+Unique predicted labels: [0]
+Protected attributes shape: (4800, 2)
+Unique groups: [[0. 0.]
+ [0. 1.]
+ [1. 0.]
+ [1. 1.]
+ [2. 0.]
+ [2. 1.]]
+Label distribution: (array([0., 1.]), array([1791, 3009]))
+gamma: 0.02  Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-0.00020833  0.00020833]
+Unique predicted labels: [0]
+Protected attributes shape: (4800, 2)
+Unique groups: [[0. 0.]
+ [0. 1.]
+ [1. 0.]
+ [1. 1.]
+ [2. 0.]
+ [2. 1.]]
+Label distribution: (array([0., 1.]), array([1791, 3009]))
+gamma: 0.05  Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-0.00020833  0.00020833]
+Unique predicted labels: [0]
+Protected attributes shape: (4800, 2)
+Unique groups: [[0. 0.]
+ [0. 1.]
+ [1. 0.]
+ [1. 1.]
+ [2. 0.]
+ [2. 1.]]
+Label distribution: (array([0., 1.]), array([1791, 3009]))
+gamma: 1e-05  Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Warning: costs_0 is constant. Skipping fit.
+Unique in costs_0: [0.]
+Unique in costs_1: [-0.00020833  0.00020833]
+Unique predicted labels: [0]
+Protected attributes shape: (4800, 2)
+Unique groups: [[0. 0.]
+ [0. 1.]
+ [1. 0.]
+ [1. 1.]
+ [2. 0.]
+ [2. 1.]]
+Label distribution: (array([0., 1.]), array([1791, 3009]))
+FP violations: [0.0, 0.0, 0.0, 0.0]
+FN violations: [0.0, 0.0, 0.0, 0.0]
+150/150 [==============================] - 0s 254us/step
+Group 0 mask shape: (4800,), dtype: bool, True count: 793
+Group 1 mask shape: (4800,), dtype: bool, True count: 802
+Group 2 mask shape: (4800,), dtype: bool, True count: 828
+Group 3 mask shape: (4800,), dtype: bool, True count: 760
+Group 4 mask shape: (4800,), dtype: bool, True count: 816
+Group 5 mask shape: (4800,), dtype: bool, True count: 801
+Shape of probs: (4800,)
+Shape of labels: (4800,)
+Sample probs: [0.48299077 0.3906607  0.38971278 0.41318318 0.46719074]
+Type of probs[0]: <class 'numpy.float32'>
+Type of probs[0:1]: <class 'numpy.ndarray'>
+Type of probs[subgroups[0]][0]: <class 'numpy.float32'>
+100%|███████████████████████████████████████████████████████████████| 200/200 [00:02<00:00, 73.14it/s]
+100%|███████████████████████████████████████████████████████████████| 200/200 [00:02<00:00, 74.62it/s]
+100%|███████████████████████████████████████████████████████████████| 200/200 [00:02<00:00, 78.27it/s]
+100%|███████████████████████████████████████████████████████████████| 200/200 [00:02<00:00, 78.07it/s]
+TF ECE before: 0.20252912535642587
+ TF ECE after (HKRR): 0.20252915821348627
+Gerry ECE before: 0.0
+Gerry ECE after (HKRR): 0.0
+TF ECE before: 0.20252912535642587
+ TF ECE after (HJZ): 0.2027273933092753
+Gerry ECE before: 0.0
+Gerry ECE after (HJZ): 0.0
