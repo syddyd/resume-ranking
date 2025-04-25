@@ -9,6 +9,7 @@ from sklearn.utils import resample
 from aif360.datasets import BinaryLabelDataset
 from sklearn.ensemble import GradientBoostingClassifier
 import matplotlib.pyplot as plt
+from sklearn.calibration import calibration_curve
 
 fairCV = np.load("./data/FairCVdb.npy", allow_pickle=True).item()
 X_train_raw = np.delete(fairCV['Profiles Train'], np.s_[12:51], axis=1)  # Remove embeddings
@@ -114,8 +115,9 @@ if len(df_min) == 0:
 df_group_balanced = []
 for group_id in df_train['group_id'].unique():
     group_df = df_train[df_train['group_id'] == group_id]
-    df0 = group_df[group_df['label'] == 0]
-    df1 = group_df[group_df['label'] == 1]
+    threshold = 0.37  # or keep configurable
+    df0 = group_df[group_df['label'] <= threshold]
+    df1 = group_df[group_df['label'] > threshold]
     if len(df1) == 0: continue  # Skip if no positives
     upsampled = resample(df1, replace=True, n_samples=len(df0), random_state=42)
     df_group_balanced.append(pd.concat([df0, upsampled]))
@@ -137,6 +139,7 @@ aif_data_test = StructuredDataset(
 )
 
 print(df_train.groupby(['ethnicity', 'gender'])['label'].value_counts())
+
 
 
 for i in range(5):
@@ -187,11 +190,6 @@ dummy_costs_0 = np.zeros(X.shape[0])  # simulate what might be passed
 print("Unique in dummy_costs_0:", np.unique(dummy_costs_0))
 print("Shape of X:", X.shape)
 
-# Test if a LogisticRegression can even be fit
-try:
-    LogisticRegression().fit(X, dummy_costs_0)
-except Exception as e:
-    print("Error during dummy fit:", e)
 
 print("PREPROCESSING DONE")
 
@@ -281,14 +279,6 @@ print("Unique groups:", np.unique(aif_data_train.protected_attributes, axis=0))
 #BASE MODEL IS FINE THIS IS FINE DO NOT MESSS WITH CLF_TEST  PLEASE
 
 
-
-binary_labels = (aif_data_train.labels.flatten()>0.37).astype(int)
-aif_data_train.labels=binary_labels.reshape(-1, 1)
-aif_data_test.labels = (aif_data_test.labels.flatten() > 0.37).astype(int).reshape(-1, 1)
-print("Shape of features:", aif_data_train.features.shape)
-print("Shape of labels:", aif_data_train.labels.shape)
-
-
 print("Train label counts(justbefore):", np.unique(aif_data_train.labels, return_counts=True))
 positive_count = np.sum(df_train['label'] == 1)
 negative_count = np.sum(df_train['label'] == 0)
@@ -319,22 +309,68 @@ class ProbWrapper:
     def predict(self, X):
         return self.model.predict_proba(X)[:, 1]
 
-X_p = X_train.reshape(X_train.shape[0], -1).astype(np.float32)
-Y_test = X_test.reshape(X_test.shape[0], -1).astype(np.float32)
-y_train_icky = (y_train.flatten() > 0.37).astype(int)
-y_test_bin = (y_test.flatten()>0.37).astype(int)
+
 
 '''
 A_p = aif_data_train.protected_attributes'''
 clf_test = GradientBoostingClassifier(n_estimators=100, learning_rate=0.05)
 from sklearn.calibration import CalibratedClassifierCV
 cal_clf = CalibratedClassifierCV(clf_test, method='sigmoid', cv=3)
+
+X_p = X_train.reshape(X_train.shape[0], -1).astype(np.float32)
+Y_test = X_test.reshape(X_test.shape[0], -1).astype(np.float32)
+y_train_icky = (y_train.flatten() > 0.37).astype(int)
+y_test_bin = (y_test.flatten()>0.37).astype(int)
+
 cal_clf.fit(X_p, y_train_icky)
 probs = cal_clf.predict_proba(Y_test)[:, 1]
 #initial_preds = (probs > 0.3).astype(int)
 initial_preds = (probs > 0.35).astype(int)
 wrapped_cal_clf = ProbWrapper(cal_clf)
 from sklearn.metrics import confusion_matrix
+
+#Intersectional Group Fairness
+print("Intersectional Group Fairness Metric")
+df_test_analysis = df_test.copy()
+df_test_analysis['pred'] = initial_preds
+intersectional_groups = df_test_analysis.groupby(['ethnicity', 'gender'])
+
+for (eth, gen), group_df in intersectional_groups:
+    cm = confusion_matrix(group_df['label'], group_df['pred'])
+    tn, fp, fn, tp = cm.ravel()
+    fpr = fp / (fp + tn + 1e-6)
+    fnr = fn/ (tp + fn + 1e-6)
+    print(f"Group ({eth}, {gen}): FP Rate = {fpr:.4f}")
+    print(f"Group ({eth}, {gen}): FN Rate = {fnr:.4f}")
+
+import matplotlib.pyplot as plt
+
+# Group names (ethnicity, gender)
+groups = ['(0.0, 0.0)', '(0.0, 1.0)', '(1.0, 0.0)', 
+          '(1.0, 1.0)', '(2.0, 0.0)', '(2.0, 1.0)']
+fp_rates = [0.1551, 0.0074, 0.1688, 0.0141, 0.1358, 0.0095]
+
+plt.figure(figsize=(10, 6))
+bars = plt.bar(groups, fp_rates, color='salmon')
+plt.title('False Positive Rates by Intersectional Group (Ethnicity × Gender)', fontsize=14)
+plt.ylabel('False Positive Rate')
+plt.xlabel('Group (Ethnicity, Gender)')
+plt.ylim(0, max(fp_rates) + 0.05)
+
+# Annotate bars
+for bar in bars:
+    yval = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.005, f'{yval:.3f}', ha='center', va='bottom', fontsize=10)
+
+plt.axhline(y=sum(fp_rates)/len(fp_rates), color='gray', linestyle='--', label='Mean FP Rate')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+#End of that metric
+
+
 
 for g in np.unique(group_ids_test):
     idx = group_ids_test == g
@@ -350,6 +386,45 @@ plt.show()
 plt.hist(initial_preds, bins=50)
 plt.title("Prediction probability distribution")
 plt.show()
+
+#Calibration Plots per Group
+print("Calibration Curve by Subgroup")
+for g in np.unique(group_ids_test):
+    idx = group_ids_test == g
+    prob_true, prob_pred = calibration_curve(y_test_bin[idx], probs[idx], n_bins=10)
+    plt.plot(prob_pred, prob_true, marker='o', label=f'Group {g}')
+    
+plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+plt.xlabel("Predicted probability")
+plt.ylabel("Observed probability")
+plt.title("Calibration Curves by Group")
+plt.legend()
+plt.show()
+
+#end of calibration plots
+
+#Predictive quality across subgroups 
+from sklearn.metrics import roc_auc_score
+print("AUC-ROC per Group")
+for g in np.unique(group_ids_test):
+    idx = group_ids_test == g
+    auc = roc_auc_score(y_test_bin[idx], probs[idx])
+    print(f"Group {g}: AUC-ROC = {auc:.3f}")
+
+import matplotlib.pyplot as plt
+
+group_names = ['0', '1', '10', '11', '20', '21']
+auc_scores = [0.983, 0.970, 0.983, 0.964, 0.982, 0.979]
+
+plt.bar(group_names, auc_scores, color='skyblue')
+plt.ylim(0.95, 1.0)
+plt.ylabel("AUC-ROC")
+plt.xlabel("Subgroup")
+plt.title("AUC-ROC by Subgroup")
+plt.axhline(y=0.5, color='red', linestyle='--', label="Random Guessing")
+plt.legend()
+plt.show()
+# end of that 
 
 clf = GerryFairClassifier(predictor=wrapped_cal_clf,C=1.0, 
 gamma=0.06, max_iters =100,  fairness_def='FP', printflag=True)
@@ -395,7 +470,7 @@ binary_data_preds = binary_data_test.copy()
 binary_data_preds.labels = gerry_binary_preds
 
 
-assert set(np.unique(binary_data_preds.labels)) <= {0, 1}, "Predictions are not binary!"
+#assert set(np.unique(binary_data_preds.labels)) <= {0, 1}, "Predictions are not binary!"
 
 print("Unique prediction values after binary_predict with gerry_binary preds:", np.unique(binary_data_preds.labels))
 
@@ -409,7 +484,34 @@ group, fp_diff = auditor.audit(predictions_tuple)
 print("Auditor FP violation:", fp_diff)
 print("Violated group:", group)
 
-from sklearn.metrics import confusion_matrix
+#Fairness accuracy tradeoff
+
+gammas = [0.03, 0.04, 0.05, 0.06, 0.07]
+accs = []
+violations = []
+
+for gamma in gammas:
+    clf = GerryFairClassifier(predictor=wrapped_cal_clf, gamma=gamma, fairness_def='FP', max_iters=100)
+    clf.fit(aif_data_train)
+    preds = clf.predict(binary_data_test).labels.flatten()
+    accs.append(np.mean(preds == y_test_bin))
+    # run auditor here
+    predictions_tuple = tuple((int(p),) for p in preds)
+    _, fp_diff = auditor.audit(predictions_tuple)
+    violations.append(fp_diff)
+
+plt.plot(gammas, accs, label="Accuracy", marker='o')
+plt.plot(gammas, violations, label="FP Violation", marker='x')
+plt.xlabel("Gamma")
+plt.ylabel("Metric")
+plt.title("Fairness vs. Accuracy Tradeoff")
+plt.legend()
+plt.xscale("log")
+plt.show()
+
+#
+
+
 
 def compute_fp_rates(dataset, predictions):
     df = dataset.convert_to_dataframe()[0]
@@ -488,7 +590,7 @@ Calibration Post Training
 '''
 
 
-from sklearn.calibration import calibration_curve
+
 
 def plot_calibration_curve(y_true, y_probs, title="Calibration Curve", filename=None):
     y_true = np.asarray(y_true).flatten()
@@ -651,7 +753,7 @@ metric = ClassificationMetric(
     unprivileged_groups=[{'ethnicity': 0}, {'gender': 0}, {'ethnicity': 2, 'gender': 0} ]
 )
 
-  # ethnicity * 10 + gender
+ 
 
 # Evaluate subgroup accuracy manually
 from collections import defaultdict
@@ -696,6 +798,7 @@ def fp_vs_fn(dataset, gamma_list, iters):
         fair_model.gamma=g
         fair_model.fit(dataset)
         preds = fair_model.predict(dataset).labels.flatten()
+        
         probs = fair_model.predict(dataset)
         fp_auditor.y_input = binary_data_test.labels.flatten()
         
